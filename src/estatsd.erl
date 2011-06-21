@@ -10,12 +10,12 @@
 -define(SERVER, estatsd_server).
 
 %% @spec start() -> ok
-%% @doc Start the authorization server.
+%% @doc Start the estatsd server.
 start() ->
     application:start(estatsd).
 
 %% @spec stop() -> ok
-%% @doc Stop the authorization server.
+%% @doc Stop the estatsd server.
 stop() ->
     application:stop(estatsd).
 
