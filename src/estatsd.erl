@@ -3,10 +3,21 @@
 -export([
          increment/1, increment/2, increment/3,
          decrement/1, decrement/2, decrement/3,
-         timing/2
+         timing/2,
+         start/0, stop/0
         ]).
 
 -define(SERVER, estatsd_server).
+
+%% @spec start() -> ok
+%% @doc Start the authorization server.
+start() ->
+    application:start(estatsd).
+
+%% @spec stop() -> ok
+%% @doc Stop the authorization server.
+stop() ->
+    application:stop(estatsd).
 
 % Convenience: just give it the now() tuple when the work started
 timing(Key, StartTime = {_,_,_}) ->
