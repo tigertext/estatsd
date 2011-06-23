@@ -1,6 +1,10 @@
 -module(estatsd_udp).
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
+-define(metric_type_map, [{<<"g">>, {folsom_metrics, new_guage}},
+                          {<<"m">>, {folsom_metrics, new_meter}},
+                          {<<"h">>, {folsom_metrics, new_histogram}}
+                         ]).
 
 %% ------------------------------------------------------------------
 %% API Function Exports
@@ -29,7 +33,7 @@ start_link(Port) ->
                 socket}).
 
 init(Port) ->
-    {ok, Socket} = gen_udp:open(Port, [binary]),
+    {ok, Socket} = gen_udp:open(Port, [binary, {active, once}]),
     {ok, #state{port = Port, socket = Socket}}.
 
 handle_call(_Request, _From, State) ->
@@ -38,8 +42,9 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({udp, _Socket, _Host, _Port, Bin}, State) ->
+handle_info({udp, Socket, _Host, _Port, Bin}, State) ->
     proc_lib:spawn(fun() -> handle_message(Bin) end),
+    inet:setopts(Socket, [{active, once}]),
     {noreply, State};
 handle_info(_Msg, State) ->
     {noreply, State}.
@@ -53,7 +58,6 @@ code_change(_OldVsn, State, _Extra) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-
 handle_message(Bin) ->
     Lines = binary:split(Bin, <<"\n">>, [global]),
     [ parse_line(L) || L <- Lines ],
@@ -63,12 +67,41 @@ parse_line(<<>>) ->
     skip;
 parse_line(Bin) ->
     [Key, Value, Type] = binary:split(Bin, [<<":">>, <<"|">>], [global]),
-    % FIXME: faster/more direct way?
     IntValue = list_to_integer(binary_to_list(Value)),
     case Type of
-        <<"d">> -> estatsd:decrement(Key, IntValue);
-        <<"c">> -> estatsd:increment(Key, IntValue);
-        <<"ms">> -> estatsd:timing(Key, IntValue)
+        <<"d">> ->
+            % counter decrement
+            estatsd:decrement(Key, IntValue),
+            folsom_metrics:new_counter(Key),
+            folsom_metrics:notify({Key, {dec, IntValue}});
+        <<"c">> ->
+            % counter increment
+            estatsd:increment(Key, IntValue),
+            folsom_metrics:new_counter(Key),
+            folsom_metrics:notify({Key, {inc, IntValue}});
+        <<"ms">> ->
+            % time (histogram)
+            estatsd:timing(Key, IntValue),
+            folsom_metrics:new_histogram(Key),
+            folsom_metrics:notify({Key, IntValue});
+        _Else ->
+            case proplists:get_value(Type, ?metric_type_map) of
+                undefined ->
+                    erlang:error({unknown_metric_type, Type, IntValue});
+                {Mod, Fun} ->
+                    Mod:Fun(Key),
+                    folsom_metrics:notify({Key, IntValue})
+            end
     end,
-    io:format("Handled: ~p~n", [[Key, IntValue, Type]]),
     ok.
+
+
+% TODO:
+        % <<"mr">> ->
+        %     % meter reader (expects monotonically increasing values)
+        %     erlang:error({not_implemented, <<"mr">>});
+        % <<"e">> ->
+        %     % histories (events)
+        %     % implementing will require different handling of message
+        %     % since value is essentially arbitrary binary (hopefully string).
+        %     erlang:error({not_implemented, <<"e">>})

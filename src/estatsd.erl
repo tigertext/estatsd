@@ -32,8 +32,6 @@ timing(Key, Duration) ->
     gen_server:cast(?SERVER, {timing, Key, erlang:round(Duration)}).
 
 
-
-
 % Increments one or more stats counters
 increment(Key) -> increment(Key, 1, 1).
 increment(Key, Amount) -> increment(Key, Amount, 1).
@@ -44,4 +42,5 @@ decrement(Key) -> decrement(Key, -1, 1).
 decrement(Key, Amount) -> decrement(Key, Amount, 1).
 decrement(Key, Amount, Sample) ->
     increment(Key, 0 - Amount, Sample).
+
 

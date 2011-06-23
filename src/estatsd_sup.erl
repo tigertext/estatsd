@@ -43,6 +43,10 @@ init([FlushIntervalMs, GraphiteHost, GraphitePort, UdpListenPort]) ->
                   [FlushIntervalMs, GraphiteHost, GraphitePort]},
                  permanent, 5000, worker, [estatsd_server]},
 
+                {folsom_sup,
+                 {folsom_sup, start_link, []},
+                  permanent, 5000, supervisor, [folsom_sup]},
+                
                 {estatsd_udp,
                  {estatsd_udp, start_link, [UdpListenPort]},
                   permanent, 5000, worker, [estatsd_udp]}
