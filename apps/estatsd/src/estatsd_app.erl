@@ -10,12 +10,6 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    ensure_started(crypto),
-    ensure_started(inets),
-    ensure_started(mochiweb),
-    application:set_env(webmachine, webmachine_logger_module,
-                        webmachine_logger),
-    ensure_started(webmachine),
     estatsd_sup:start_link().
 
 stop(_State) ->

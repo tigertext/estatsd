@@ -11,7 +11,7 @@
 -module(estatsd_server).
 -behaviour(gen_server).
 
--export([start_link/3]).
+-export([start_link/0]).
 
 %-export([key2str/1,flush/0]). %% export for debugging 
 
@@ -25,15 +25,15 @@
                 graphite_port       % graphite server port
                }).
 
-start_link(FlushIntervalMs, GraphiteHost, GraphitePort) ->
-    gen_server:start_link({local, ?MODULE}, 
-                          ?MODULE, 
-                          [FlushIntervalMs, GraphiteHost, GraphitePort], 
-                          []).
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 %%
 
-init([FlushIntervalMs, GraphiteHost, GraphitePort]) ->
+init([]) ->
+    {ok, FlushIntervalMs} = application:get_env(estatsd, flush_interval),
+    {ok, GraphiteHost} = application:get_env(estatsd, graphite_host),
+    {ok, GraphitePort} = application:get_env(estatsd, graphite_port),
     error_logger:info_msg("estatsd will flush stats to ~p:~w every ~wms\n", 
                           [ GraphiteHost, GraphitePort, FlushIntervalMs ]),
     ets:new(statsd, [named_table, set]),

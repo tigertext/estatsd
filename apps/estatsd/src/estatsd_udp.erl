@@ -10,7 +10,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/1]).
+-export([start_link/0]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -23,8 +23,8 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-start_link(Port) ->
-    gen_server:start_link(?MODULE, Port, []).
+start_link() ->
+    gen_server:start_link(?MODULE, [], []).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -32,7 +32,8 @@ start_link(Port) ->
 -record(state, {port,
                 socket}).
 
-init(Port) ->
+init([]) ->
+    {ok, Port} = application:get_env(estatsd, udp_listen_port),
     {ok, Socket} = gen_udp:open(Port, [binary, {active, once}]),
     {ok, #state{port = Port, socket = Socket}}.
 
