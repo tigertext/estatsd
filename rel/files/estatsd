@@ -63,7 +63,8 @@ case "$1" in
         export HEART_COMMAND
         mkdir -p $PIPE_DIR
         shift # remove $1
-        $ERTS_PATH/run_erl -daemon $PIPE_DIR $RUNNER_LOG_DIR "exec $RUNNER_BASE_DIR/bin/$SCRIPT console $@" 2>&1
+        # no -daemon and no exec for use with runit
+        $ERTS_PATH/run_erl $PIPE_DIR $RUNNER_LOG_DIR "$RUNNER_BASE_DIR/bin/$SCRIPT console $@" 2>&1
         ;;
 
     stop)
