@@ -1,7 +1,7 @@
 -module(estatsd_udp).
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
--define(metric_type_map, [{<<"g">>, {folsom_metrics, new_guage}},
+-define(metric_type_map, [{<<"g">>, {folsom_metrics, new_gauge}},
                           {<<"m">>, {folsom_metrics, new_meter}},
                           {<<"h">>, {folsom_metrics, new_histogram}}
                          ]).
