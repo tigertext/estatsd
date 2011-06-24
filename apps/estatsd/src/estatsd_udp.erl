@@ -5,6 +5,7 @@
                           {<<"m">>, {folsom_metrics, new_meter}},
                           {<<"h">>, {folsom_metrics, new_histogram}}
                          ]).
+-define(to_int(Value), list_to_integer(binary_to_list(Value))).
 
 %% ------------------------------------------------------------------
 %% API Function Exports
@@ -68,41 +69,38 @@ parse_line(<<>>) ->
     skip;
 parse_line(Bin) ->
     [Key, Value, Type] = binary:split(Bin, [<<":">>, <<"|">>], [global]),
-    IntValue = list_to_integer(binary_to_list(Value)),
-    case Type of
-        <<"d">> ->
-            % counter decrement
-            estatsd:decrement(Key, IntValue),
-            folsom_metrics:new_counter(Key),
-            folsom_metrics:notify({Key, {dec, IntValue}});
-        <<"c">> ->
-            % counter increment
-            estatsd:increment(Key, IntValue),
-            folsom_metrics:new_counter(Key),
-            folsom_metrics:notify({Key, {inc, IntValue}});
-        <<"ms">> ->
-            % time (histogram)
-            estatsd:timing(Key, IntValue),
-            folsom_metrics:new_histogram(Key),
-            folsom_metrics:notify({Key, IntValue});
-        _Else ->
-            case proplists:get_value(Type, ?metric_type_map) of
-                undefined ->
-                    erlang:error({unknown_metric_type, Type, IntValue});
-                {Mod, Fun} ->
-                    Mod:Fun(Key),
-                    folsom_metrics:notify({Key, IntValue})
-            end
-    end,
+    send_metric(Type, Key, Value),
     ok.
+
+send_metric(Type, Key, Value) when Type =:= <<"d">> orelse Type =:= <<"c">> ->
+    {EstatsFun, FolsomTag} = case Type of
+                                 <<"d">> -> {decrement, dec};
+                                 <<"c">> -> {increment, inc}
+                             end,
+    IntValue = ?to_int(Value),
+    estatsd:EstatsFun(Key, IntValue),
+    folsom_metrics:new_counter(Key),
+    folsom_metrics:notify({Key, {FolsomTag, IntValue}});
+send_metric(<<"ms">>, Key, Value) ->
+    IntValue = ?to_int(Value),
+    estatsd:timing(Key, IntValue),
+    folsom_metrics:new_histogram(Key),
+    folsom_metrics:notify({Key, IntValue});
+send_metric(<<"e">>, Key, Value) ->
+    folsom_metrics:new_history(Key),
+    folsom_metrics:notify({Key, Value});
+send_metric(Type, Key, Value) ->
+    IntValue = ?to_int(Value),
+    case proplists:get_value(Type, ?metric_type_map) of
+        undefined ->
+            erlang:error({unknown_metric_type, Type, IntValue});
+        {Mod, Fun} ->
+            Mod:Fun(Key),
+            folsom_metrics:notify({Key, IntValue})
+    end.
 
 
 % TODO:
         % <<"mr">> ->
         %     % meter reader (expects monotonically increasing values)
         %     erlang:error({not_implemented, <<"mr">>});
-        % <<"e">> ->
-        %     % histories (events)
-        %     % implementing will require different handling of message
-        %     % since value is essentially arbitrary binary (hopefully string).
-        %     erlang:error({not_implemented, <<"e">>})
