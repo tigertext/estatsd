@@ -28,3 +28,5 @@ devrel: rel
 
 rel/estatsd:
 	@./rebar generate
+
+deploy: relclean rel

@@ -35,7 +35,11 @@ start_link() ->
 
 init([]) ->
     {ok, Port} = application:get_env(estatsd, udp_listen_port),
-    {ok, Socket} = gen_udp:open(Port, [binary, {active, once}]),
+    {ok, RecBuf} = application:get_env(estatsd, udp_recbuf),
+    error_logger:info_msg("estatsd will listen on UDP ~p with recbuf ~p~n",
+                          [Port, RecBuf]),
+    {ok, Socket} = gen_udp:open(Port, [binary, {active, once},
+                                       {recbuf, RecBuf}]),
     {ok, #state{port = Port, socket = Socket}}.
 
 handle_call(_Request, _From, State) ->
