@@ -2,6 +2,7 @@
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
 
+-define(ALL_METRICS, all_metrics_keys).
 -include_lib("folsom/include/folsom.hrl").
 
 %-include_lib("eunit/include/eunit.hrl").
@@ -34,18 +35,20 @@ ensure_metric(Key, Type) ->
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init([]) ->
+    ets:new(?ALL_METRICS, [set, named_table, public]),
     {ok, undefined}.
 
 handle_call({ensure_metric, Key, Type, Table, Fun}, _From, State) ->
-    Status = case ets:member(Table, Key) of
+    Status = case ets:member(?ALL_METRICS, {Key, Table}) of
                  true ->
                      already_exists;
                  false ->
                      folsom_metrics:Fun(Key),
+                     ets:insert(?ALL_METRICS, {{Key, Table}, true}),
                      error_logger:info_msg("created|~p|~p|~p~n",
-                                           [Key, Fun, Type]),
-                     created
-             end,
+                                           [{Key, Table}, Fun, Type]),
+                    created
+            end,
     {reply, {ok, Status}, State};
 handle_call(_Request, _From, State) ->
     {noreply, ok, State}.
