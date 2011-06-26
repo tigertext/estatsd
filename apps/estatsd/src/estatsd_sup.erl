@@ -26,6 +26,10 @@ init([]) ->
                  {estatsd_server, start_link, []},
                  permanent, 5000, worker, [estatsd_server]},
 
+                {estatsd_folsom,
+                 {estatsd_folsom, start_link, []},
+                  permanent, 5000, worker, [estatsd_folsom]},
+
                 {estatsd_udp,
                  {estatsd_udp, start_link, []},
                   permanent, 5000, worker, [estatsd_udp]}

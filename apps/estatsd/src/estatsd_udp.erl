@@ -1,10 +1,7 @@
 -module(estatsd_udp).
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
--define(metric_type_map, [{<<"g">>, {folsom_metrics, new_gauge}},
-                          {<<"m">>, {folsom_metrics, new_meter}},
-                          {<<"h">>, {folsom_metrics, new_histogram}}
-                         ]).
+
 -define(to_int(Value), list_to_integer(binary_to_list(Value))).
 
 %% ------------------------------------------------------------------
@@ -73,6 +70,7 @@ parse_line(<<>>) ->
     skip;
 parse_line(Bin) ->
     [Key, Value, Type] = binary:split(Bin, [<<":">>, <<"|">>], [global]),
+    {ok, _} = estatsd_folsom:ensure_metric(Key, Type),
     send_metric(Type, Key, Value),
     ok.
 
@@ -83,26 +81,16 @@ send_metric(Type, Key, Value) when Type =:= <<"d">> orelse Type =:= <<"c">> ->
                              end,
     IntValue = ?to_int(Value),
     estatsd:EstatsFun(Key, IntValue),
-    folsom_metrics:new_counter(Key),
     folsom_metrics:notify({Key, {FolsomTag, IntValue}});
 send_metric(<<"ms">>, Key, Value) ->
     IntValue = ?to_int(Value),
     estatsd:timing(Key, IntValue),
-    folsom_metrics:new_histogram(Key),
     folsom_metrics:notify({Key, IntValue});
 send_metric(<<"e">>, Key, Value) ->
-    folsom_metrics:new_history(Key),
     folsom_metrics:notify({Key, Value});
-send_metric(Type, Key, Value) ->
+send_metric(_Type, Key, Value) ->
     IntValue = ?to_int(Value),
-    case proplists:get_value(Type, ?metric_type_map) of
-        undefined ->
-            erlang:error({unknown_metric_type, Type, IntValue});
-        {Mod, Fun} ->
-            Mod:Fun(Key),
-            folsom_metrics:notify({Key, IntValue})
-    end.
-
+    folsom_metrics:notify({Key, IntValue}).
 
 % TODO:
         % <<"mr">> ->
