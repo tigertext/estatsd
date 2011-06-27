@@ -63,7 +63,7 @@ handle_info({udp, Socket, _Host, _Port, Bin},
     error_logger:info_msg("spawn batch ~p FULL", [Max]),
     start_batch_worker(Batch),
     inet:setopts(Socket, [{active, once}]),
-    {noreply, State#state{batch=[Bin]}, MaxAge};
+    {noreply, State#state{batch=[Bin]}};
 handle_info({udp, Socket, _Host, _Port, Bin}, #state{batch=Batch,
                                                      batch_max_age=MaxAge}=State) ->
     inet:setopts(Socket, [{active, once}]),
@@ -71,7 +71,7 @@ handle_info({udp, Socket, _Host, _Port, Bin}, #state{batch=Batch,
 handle_info(timeout, #state{batch=Batch, batch_max_age=MaxAge}=State) ->
     error_logger:info_msg("spawn batch ~p TIMEOUT", [length(Batch)]),
     start_batch_worker(Batch),
-    {noreply, State#state{batch=[]}, MaxAge};
+    {noreply, State#state{batch=[]}};
 handle_info(_Msg, State) ->
     {noreply, State}.
 
