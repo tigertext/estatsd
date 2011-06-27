@@ -29,7 +29,7 @@ start_link() ->
 %% ------------------------------------------------------------------
 -record(state, {port          :: non_neg_integer(),
                 socket        :: inet:socket(),
-                batch = []   :: [binary()],
+                batch = []    :: [binary()],
                 batch_max     :: non_neg_integer(),
                 batch_max_age :: non_neg_integer()
                }).
@@ -57,9 +57,9 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 
-handle_info({udp, Socket, _Host, _Port, Bin}, #state{batch=Batch,
-                                                     batch_max=Max,
-                                                     batch_max_age=MaxAge}=State) when length(Batch) == Max ->
+handle_info({udp, Socket, _Host, _Port, Bin},
+            #state{batch=Batch, batch_max=Max,
+                   batch_max_age=MaxAge}=State) when length(Batch) == Max ->
     error_logger:info_msg("spawn batch ~p FULL", [Max]),
     start_batch_worker(Batch),
     inet:setopts(Socket, [{active, once}]),
