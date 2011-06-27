@@ -86,6 +86,7 @@ terminate(_, _)             -> ok.
 %% INTERNAL STUFF
 
 send_to_graphite(Msg, State) ->
+    error_logger:info_msg("sending data to graphite"),
     % io:format("SENDING: ~s\n", [Msg]),
     case gen_tcp:connect(State#state.graphite_host,
                          State#state.graphite_port,
