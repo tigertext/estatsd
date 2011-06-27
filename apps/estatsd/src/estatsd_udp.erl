@@ -58,8 +58,7 @@ handle_cast(_Msg, State) ->
 
 
 handle_info({udp, Socket, _Host, _Port, Bin},
-            #state{batch=Batch, batch_max=Max,
-                   batch_max_age=MaxAge}=State) when length(Batch) == Max ->
+            #state{batch=Batch, batch_max=Max}=State) when length(Batch) == Max ->
     error_logger:info_msg("spawn batch ~p FULL~n", [Max]),
     start_batch_worker(Batch),
     inet:setopts(Socket, [{active, once}]),
@@ -68,7 +67,7 @@ handle_info({udp, Socket, _Host, _Port, Bin}, #state{batch=Batch,
                                                      batch_max_age=MaxAge}=State) ->
     inet:setopts(Socket, [{active, once}]),
     {noreply, State#state{batch=[Bin|Batch]}, MaxAge};
-handle_info(timeout, #state{batch=Batch, batch_max_age=MaxAge}=State) ->
+handle_info(timeout, #state{batch=Batch}=State) ->
     error_logger:info_msg("spawn batch ~p TIMEOUT~n", [length(Batch)]),
     start_batch_worker(Batch),
     {noreply, State#state{batch=[]}};
