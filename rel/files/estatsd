@@ -48,7 +48,7 @@ APP_VSN=${START_ERL#* }
 ERTS_PATH=$RUNNER_BASE_DIR/erts-$ERTS_VSN/bin
 
 # Setup command to control the node
-NODETOOL="$ERTS_PATH/escript $ERTS_PATH/nodetool $NAME_ARG -setcookie $COOKIE_ARG"
+NODETOOL="$ERTS_PATH/escript $ERTS_PATH/nodetool $NAME_ARG $COOKIE_ARG"
 
 # Check the first argument for instructions
 case "$1" in
