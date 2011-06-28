@@ -69,7 +69,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-table_for_type(Type) when Type =:= <<"d">> orelse Type =:= <<"c">> ->
+table_for_type(Type) when Type =:= <<"d">> orelse Type =:= <<"i">> ->
     {?COUNTER_TABLE, new_counter};
 table_for_type(Type) when Type =:= <<"ms">> orelse Type =:= <<"h">> ->
     {?HISTOGRAM_TABLE, new_histogram};
@@ -77,7 +77,11 @@ table_for_type(<<"e">>) ->
     {?HISTORY_TABLE, new_history};
 table_for_type(<<"g">>) ->
     {?GAUGE_TABLE, new_gauge};
-table_for_type(<<"m">>) ->
+table_for_type(Type) when Type =:= <<"m">> orelse Type =:= <<"c">> ->
+    % we treat our current "c" as a meter because it is essentially
+    % request count so treating as a meter will give us req/s data.
     {?METER_TABLE, new_meter};
+table_for_type(<<"mr">>) ->
+    {?METER_READER_TABLE, new_meter_reader};
 table_for_type(BadType) ->
     erlang:error({error, {bad_type, BadType}}).
