@@ -20,6 +20,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
+-record(state, {blacklist = [] :: [re:mp()]}).
+
 %% ------------------------------------------------------------------
 %% API Function Definitions
 %% ------------------------------------------------------------------
@@ -29,26 +31,21 @@ start_link() ->
 
 ensure_metric(Key, Type) ->
     {Table, Fun} = table_for_type(Type),
-    gen_server:call(?SERVER, {ensure_metric, Key, Type, Table, Fun}).
+    gen_server:call(?SERVER, {ensure_metric, Key, Table, Fun}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 init([]) ->
+    {ok, Blacklist} = application:get_env(estatsd, folsom_blacklist),
     ets:new(?ALL_METRICS, [set, named_table, public]),
-    {ok, undefined}.
+    {ok, #state{blacklist = build_blacklist_regex(Blacklist)}}.
 
-handle_call({ensure_metric, Key, Type, Table, Fun}, _From, State) ->
-    Status = case ets:member(?ALL_METRICS, {Key, Table}) of
-                 true ->
-                     already_exists;
-                 false ->
-                     folsom_metrics:Fun(Key),
-                     ets:insert(?ALL_METRICS, {{Key, Table}, true}),
-                     error_logger:info_msg("created|~p|~p|~p~n",
-                                           [{Key, Table}, Fun, Type]),
-                    created
-            end,
+handle_call({ensure_metric, Key, Table, Fun}, _From,
+            State = #state{blacklist = Blacklist}) ->
+    Blacklisted = is_blacklisted(Key, Blacklist),
+    Exists = ets:member(?ALL_METRICS, {Key, Table}),
+    Status = create_maybe(Blacklisted, Exists, Key, Table, Fun),
     {reply, {ok, Status}, State};
 handle_call(_Request, _From, State) ->
     {noreply, ok, State}.
@@ -85,3 +82,28 @@ table_for_type(<<"mr">>) ->
     {?METER_READER_TABLE, new_meter_reader};
 table_for_type(BadType) ->
     erlang:error({error, {bad_type, BadType}}).
+
+
+create_maybe(true, _, _Key, _Table, _Fun) ->
+    blacklisted;
+create_maybe(false, true, _Key, _Table, _Fun) ->
+    {ok, already_exists};
+create_maybe(false, false, Key, Table, Fun) ->
+    folsom_metrics:Fun(Key),
+    ets:insert(?ALL_METRICS, {{Key, Table}, true}),
+    error_logger:info_msg("created|~p|~p~n", [{Key, Table}, Fun]),
+    {ok, created}.
+
+build_blacklist_regex(List) ->
+    lists:map(fun(P) ->
+                      {ok, RE} = re:compile(P),
+                      RE
+              end, List).
+
+is_blacklisted(Key, [RE|Rest]) ->
+    case re:run(Key, RE) of
+        {match, _} -> true;
+        nomatch -> is_blacklisted(Key, Rest)
+    end;
+is_blacklisted(_Key, []) ->
+    false.

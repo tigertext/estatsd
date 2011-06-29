@@ -90,6 +90,7 @@ start_batch_worker(Batch) ->
 handle_messages(Batch) ->
     [ handle_message(M) || M <- Batch ],
     ok.
+
 handle_message(Bin) ->
     Lines = binary:split(Bin, <<"\n">>, [global]),
     [ parse_line(L) || L <- Lines ],
@@ -99,29 +100,30 @@ parse_line(<<>>) ->
     skip;
 parse_line(Bin) ->
     [Key, Value, Type] = binary:split(Bin, [<<":">>, <<"|">>], [global]),
-    {ok, _} = estatsd_folsom:ensure_metric(Key, Type),
     send_metric(Type, Key, Value),
     ok.
 
-send_metric(Type, Key, Value) when Type =:= <<"d">> orelse Type =:= <<"c">> ->
-    {EstatsFun, FolsomTag} = case Type of
-                                 <<"d">> -> {decrement, dec};
-                                 <<"c">> -> {increment, inc}
-                             end,
-    IntValue = ?to_int(Value),
-    estatsd:EstatsFun(Key, IntValue),
-    folsom_metrics:notify({Key, {FolsomTag, IntValue}});
-send_metric(<<"ms">>, Key, Value) ->
-    IntValue = ?to_int(Value),
-    estatsd:timing(Key, IntValue),
-    folsom_metrics:notify({Key, IntValue});
-send_metric(<<"e">>, Key, Value) ->
-    folsom_metrics:notify({Key, Value});
-send_metric(_Type, Key, Value) ->
-    IntValue = ?to_int(Value),
-    folsom_metrics:notify({Key, IntValue}).
+send_metric(Type, Key, Value) ->
+    {ok, Status} = estatsd_folsom:ensure_metric(Key, Type),
+    send_folsom_metric(Status, Type, Key, Value),
+    send_estatsd_metric(Type, Key, Value).
 
-% TODO:
-        % <<"mr">> ->
-        %     % meter reader (expects monotonically increasing values)
-        %     erlang:error({not_implemented, <<"mr">>});
+send_estatsd_metric(Type = <<"ms">>, Key, Value) ->
+    estatsd:timing(Key, convert_value(Type, Value));
+send_estatsd_metric(Type = <<"c">>, Key, Value) ->
+    estatsd:increment(Key, convert_value(Type, Value)).
+
+send_folsom_metric(blacklisted, _, _, _) ->
+    skipped;
+send_folsom_metric({ok, _}, Type = <<"c">>, Key, Value) ->
+    % TODO: avoid event handler, go direct to folsom
+    folsom_metrics_meter:mark(Key, convert_value(Type, Value));
+send_folsom_metric({ok, _}, Type = <<"ms">>, Key, Value) ->
+    folsom_metrics_histogram:update(Key, convert_value(Type, Value));
+send_folsom_metric({ok, _}, Type, Key, Value) ->
+    folsom_metrics:notify({Key, convert_value(Type, Value)}).
+
+convert_value(<<"e">>, Value) ->
+    Value;
+convert_value(_Type, Value) ->
+    ?to_int(Value).
