@@ -1,6 +1,6 @@
 -module(opscode_stats_gen).
 
--define(TYPES, [<<"d">>, <<"c">>, <<"ms">>, <<"e">>]).
+-define(TYPES, [<<"c">>, <<"ms">>, <<"e">>]).
 -define(TYPE_COUNT, length(?TYPES)).
 
 -export([new_stat/1]).
@@ -21,7 +21,7 @@ new_value(<<"e">>) ->
     integer_to_list(crypto:rand_uniform(1, 500)).
 
 random_name() ->
-    ["metric", integer_to_list(crypto:rand_uniform(1, 5000))].
+    io_lib:format("metric~4..0B", [crypto:rand_uniform(1, 1000)]).
 
 select_type() ->
     lists:nth(crypto:rand_uniform(1, ?TYPE_COUNT), ?TYPES).
