@@ -99,7 +99,7 @@ handle_message(Bin) ->
     catch
         error:Why ->
             error_logger:error_report({error, "handle_message failed",
-                                       Bin, Why})
+                                       Bin, Why, erlang:get_stacktrace()})
     end.
 
 parse_line(<<>>) ->
