@@ -92,9 +92,15 @@ handle_messages(Batch) ->
     ok.
 
 handle_message(Bin) ->
-    Lines = binary:split(Bin, <<"\n">>, [global]),
-    [ parse_line(L) || L <- Lines ],
-    ok.
+    try
+        Lines = binary:split(Bin, <<"\n">>, [global]),
+        [ parse_line(L) || L <- Lines ],
+        ok
+    catch
+        error:Why ->
+            error_logger:error_report({error, "handle_message failed",
+                                       Bin, Why})
+    end.
 
 parse_line(<<>>) ->
     skip;
@@ -111,7 +117,10 @@ send_metric(Type, Key, Value) ->
 send_estatsd_metric(Type = <<"ms">>, Key, Value) ->
     estatsd:timing(Key, convert_value(Type, Value));
 send_estatsd_metric(Type = <<"c">>, Key, Value) ->
-    estatsd:increment(Key, convert_value(Type, Value)).
+    estatsd:increment(Key, convert_value(Type, Value));
+send_estatsd_metric(_Type, _Key, _Value) ->
+    % if it isn't one of the above types, we ignore the request.
+    ignored.
 
 send_folsom_metric(blacklisted, _, _, _) ->
     skipped;
@@ -120,6 +129,8 @@ send_folsom_metric({ok, _}, Type = <<"c">>, Key, Value) ->
     folsom_metrics_meter:mark(Key, convert_value(Type, Value));
 send_folsom_metric({ok, _}, Type = <<"ms">>, Key, Value) ->
     folsom_metrics_histogram:update(Key, convert_value(Type, Value));
+send_folsom_metric({ok, _}, Type = <<"mr">>, Key, Value) ->
+    folsom_metrics_meter_reader:mark(Key, convert_value(Type, Value));
 send_folsom_metric({ok, _}, Type, Key, Value) ->
     folsom_metrics:notify({Key, convert_value(Type, Value)}).
 
