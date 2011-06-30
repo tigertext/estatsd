@@ -110,8 +110,9 @@ parse_line(Bin) ->
     ok.
 
 send_metric(Type, Key, Value) ->
-    {ok, Status} = estatsd_folsom:ensure_metric(Key, Type),
-    send_folsom_metric(Status, Type, Key, Value),
+    FolsomKey = folsom_key_name(Type, Key),
+    {ok, Status} = estatsd_folsom:ensure_metric(FolsomKey, Type),
+    send_folsom_metric(Status, Type, FolsomKey, Value),
     send_estatsd_metric(Type, Key, Value).
 
 send_estatsd_metric(Type = <<"ms">>, Key, Value) ->
@@ -138,3 +139,10 @@ convert_value(<<"e">>, Value) ->
     Value;
 convert_value(_Type, Value) ->
     ?to_int(Value).
+
+folsom_key_name(<<"c">>, Key) ->
+    iolist_to_binary([<<"stats.">>, Key]);
+folsom_key_name(<<"ms">>, Key) ->
+    iolist_to_binary([<<"stats.timers.">>, Key]);
+folsom_key_name(_Type, Key) ->
+    Key.
