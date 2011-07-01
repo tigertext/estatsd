@@ -38,7 +38,7 @@ parse_packet(<<"\n", Rest/binary>>, Acc) ->
     Actual = size(Rest) + 1, % to account for the consumed \n
     case Length =:= Actual of
         true ->
-            {Length, Rest};
+            parse_body({Length, Rest});
         false ->
             {bad_length, {Length, Rest}}
     end;
@@ -46,12 +46,37 @@ parse_packet(<<C:8, Rest/binary>>, Acc) ->
     parse_packet(Rest, [C|Acc]);
 parse_packet(<<>>, Acc) ->
     {bad_length, {lists:reverse(Acc), <<>>}}.
+
+parse_body({_Length, Body}) ->
+    try
+        Lines = binary:split(Body, <<"\n">>, [global]),
+        [ parse_line(L) || L <- Lines, L =/= <<>> ]
+    catch
+        error:Why ->
+            error_logger:error_report({bad_metric,
+                                       {Body, Why, erlang:get_stacktrace()}}),
+            throw({bad_metric_body, Body})
     
-parse_header(Packet) ->
-    [Head|Lines] = binary:split(Packet, <<"\n">>, [global]),
-    % verify we are at version 1
-    [?SHP_VERSION, Len] = [ ?to_int(X) || X <- binary:split(Head, <<"|">>) ],
-    {{?SHP_VERSION, Len}, Lines}.
+    end.
+
+parse_line(Bin) ->
+    [Key, Value, Type | Rate] = binary:split(Bin, [<<":">>, <<"|">>], [global]),
+    #shp_metric{key = Key, value = ?to_int(Value), type = parse_type(Type),
+               sample_rate = parse_sample_rate(Rate)}.
+
+parse_type(<<"m">>) ->
+    m;
+parse_type(<<"h">>) ->
+    h;
+parse_type(<<"mr">>) ->
+    mr;
+parse_type(<<"g">>) ->
+    g.
+
+parse_sample_rate([]) ->
+    undefined;
+parse_sample_rate([<<"@", FloatBin/binary>>]) ->
+    list_to_float(binary_to_list(FloatBin)).
 
 estatsd_shp_test_() ->
     {foreach,
@@ -62,17 +87,14 @@ estatsd_shp_test_() ->
              cleanup
      end,
      [
-      {"parse_valid header",
-       fun() ->
-               Packet = <<"1|26\na_label:1|m">>,
-               {{Version, Len}, Lines} = parse_header(Packet),
-               ?assertEqual(?SHP_VERSION, Version),
-               ?assertEqual(26, Len)
-       end},
       {"parse_packet valid packet",
        fun() ->
                Packet = <<"1|12\na_label:1|m">>,
-               ?assertEqual({12, <<"a_label:1|m">>}, parse_packet(Packet))
+               ?assertEqual([#shp_metric{key = <<"a_label">>,
+                                       value = 1,
+                                       type = m,
+                                        sample_rate = undefined}],
+                            parse_packet(Packet))
        end
       },
 
@@ -88,6 +110,7 @@ estatsd_shp_test_() ->
       },
 
       {"parse_packet content length mismatch",
+       generator,
        fun() ->
                BadLength = [{<<"1|11\na_label:1|m">>,
                              {11, <<"a_label:1|m">>}},
@@ -98,12 +121,13 @@ estatsd_shp_test_() ->
                             {<<"1|11\na_label:1|m">>,
                             {11, <<"a_label:1|m">>}}
                            ],
-               [ ?assertEqual({bad_length, {L, R}}, parse_packet(P))
+               [ ?_assertEqual({bad_length, {L, R}}, parse_packet(P))
                  || {P, {L, R}} <- BadLength ]
        end
       },
 
       {"parse_packet invalid content length",
+       generator,
        fun() ->
                Packets = [{<<"1|1.0\nlabel:1|m">>,
                            {"1.0", <<"label:1|m">>}},
@@ -116,8 +140,48 @@ estatsd_shp_test_() ->
                           
                          ],
 
-               [ ?assertEqual({bad_length, {L, R}}, parse_packet(P))
+               [ ?_assertEqual({bad_length, {L, R}}, parse_packet(P))
                  || {P, {L, R}} <- Packets ]
+       end
+      },
+
+      {"parse_line valid metric tests",
+       generator,
+       fun() ->
+               Tests = [{<<"label:1|m">>, #shp_metric{key = <<"label">>,
+                                                      value = 1,
+                                                      type = 'm'}},
+
+                        {<<"label:123|h">>, #shp_metric{key = <<"label">>,
+                                                        value = 123,
+                                                        type = 'h'}},
+
+                        {<<"x:-123|g">>, #shp_metric{key = <<"x">>,
+                                                        value = -123,
+                                                        type = 'g'}},
+
+
+                        {<<"x:123|h">>, #shp_metric{key = <<"x">>,
+                                                        value = 123,
+                                                        type = 'h'}},
+
+                        % sample rate
+                        {<<"x:123|h|@0.43">>, #shp_metric{key = <<"x">>,
+                                                          value = 123,
+                                                          type = 'h',
+                                                          sample_rate = 0.43}}
+                        
+                       ],
+               [ ?_assertEqual(Expect, parse_line(In)) ||
+                  {In, Expect} <- Tests ]
+       end
+      },
+
+      {"parse_line invalid metric tests",
+       generator,
+       fun() ->
+               % TODO
+               []
        end
       }
      ]}.
