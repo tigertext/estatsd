@@ -4,10 +4,8 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(to_int(Value), list_to_integer(binary_to_list(Value))).
 -define(SHP_VERSION, 1).
 
-% -type shp_metric_type() :: (<<"m">> | <<"mr">> | <<"g">> | <<"h">>).
 -type shp_metric_type() :: 'm' | 'mr' | 'g' | 'h'.
 
 -record(shp_metric, {key :: binary(),
@@ -53,7 +51,7 @@ parse_body({Length, GZBody = <<31, 139, _Rest/binary>>}) ->
 parse_body({_Length, Body}) ->
     try
         Lines = binary:split(Body, <<"\n">>, [global]),
-        [ parse_line(L) || L <- Lines, L =/= <<>> ]
+        [ parse_metric(L) || L <- Lines, L =/= <<>> ]
     catch
         error:Why ->
             error_logger:error_report({bad_metric,
@@ -62,10 +60,18 @@ parse_body({_Length, Body}) ->
     
     end.
 
-parse_line(Bin) ->
-    [Key, Value, Type | Rate] = binary:split(Bin, [<<":">>, <<"|">>], [global]),
-    #shp_metric{key = Key, value = ?to_int(Value), type = parse_type(Type),
-               sample_rate = parse_sample_rate(Rate)}.
+parse_metric(Bin) ->
+    try
+        [Key, Value, Type | Rate] = binary:split(Bin, [<<":">>, <<"|">>],
+                                                 [global]),
+        #shp_metric{key = Key, value = to_int(Value), type = parse_type(Type),
+                    sample_rate = parse_sample_rate(Rate)}
+    catch
+        throw:{bad_metric, Why} ->
+            {bad_metric, Why};
+        error:{badmatch, _} ->
+            {bad_metric, {parse_error, Bin}}
+    end.
 
 parse_type(<<"m">>) ->
     m;
@@ -74,12 +80,29 @@ parse_type(<<"h">>) ->
 parse_type(<<"mr">>) ->
     mr;
 parse_type(<<"g">>) ->
-    g.
+    g;
+parse_type(Unknown) ->
+    throw({bad_metric, {unknown_type, Unknown}}).
 
 parse_sample_rate([]) ->
     undefined;
 parse_sample_rate([<<"@", FloatBin/binary>>]) ->
-    list_to_float(binary_to_list(FloatBin)).
+    try
+        list_to_float(binary_to_list(FloatBin))
+    catch
+        error:badarg ->
+            throw({bad_metric, {bad_sample_rate, FloatBin}})
+    end;
+parse_sample_rate(L) ->
+    throw({bad_metric, {bad_sample_rate, L}}).
+
+to_int(Value) when is_binary(Value) ->
+    try
+        list_to_integer(binary_to_list(Value))
+    catch
+        error:badarg ->
+            throw({bad_metric, {bad_value, Value}})
+    end.
 
 estatsd_shp_test_() ->
     {foreach,
@@ -148,34 +171,29 @@ estatsd_shp_test_() ->
        end
       },
 
-      {"parse_line valid metric tests",
+      {"parse_metric valid metric tests",
        generator,
        fun() ->
-               Tests = [{<<"label:1|m">>, #shp_metric{key = <<"label">>,
-                                                      value = 1,
-                                                      type = 'm'}},
+               Tests = [{<<"label:1|m">>,
+                         #shp_metric{key = <<"label">>, value = 1, type = 'm'}},
 
-                        {<<"label:123|h">>, #shp_metric{key = <<"label">>,
-                                                        value = 123,
-                                                        type = 'h'}},
+                        {<<"label:123|h">>,
+                         #shp_metric{key = <<"label">>, value = 123,
+                                     type = 'h'}},
 
-                        {<<"x:-123|g">>, #shp_metric{key = <<"x">>,
-                                                        value = -123,
-                                                        type = 'g'}},
+                        {<<"x:-123|g">>,
+                         #shp_metric{key = <<"x">>, value = -123, type = 'g'}},
 
 
-                        {<<"x:123|h">>, #shp_metric{key = <<"x">>,
-                                                        value = 123,
-                                                        type = 'h'}},
+                        {<<"x:123|h">>,
+                         #shp_metric{key = <<"x">>, value = 123, type = 'h'}},
 
                         % sample rate
-                        {<<"x:123|h|@0.43">>, #shp_metric{key = <<"x">>,
-                                                          value = 123,
-                                                          type = 'h',
-                                                          sample_rate = 0.43}}
-                        
+                        {<<"x:123|h|@0.43">>,
+                         #shp_metric{key = <<"x">>, value = 123, type = 'h',
+                                     sample_rate = 0.43}}
                        ],
-               [ ?_assertEqual(Expect, parse_line(In)) ||
+               [ ?_assertEqual(Expect, parse_metric(In)) ||
                   {In, Expect} <- Tests ]
        end
       },
@@ -198,13 +216,42 @@ estatsd_shp_test_() ->
                
       },
 
-      {"parse_line invalid metric tests",
+      {"parse_metric bad metrics",
        generator,
        fun() ->
-               % TODO
-               []
+               Tests = [
+                        % bad type
+                        {<<"x:1|q">>, {bad_metric, {unknown_type, <<"q">>}}},
+                        % bad value
+                        {<<"x:1.0|m">>, {bad_metric, {bad_value, <<"1.0">>}}},
+                        % bad parse
+                        {<<"x:10m">>, {bad_metric, {parse_error, <<"x:10m">>}}},
+                        {<<"x:1|m|a|b">>, {bad_metric,
+                                           {bad_sample_rate, [<<"a">>, <<"b">>]}}}
+                       ],
+               [ ?_assertEqual(Expect, parse_metric(Line)) ||
+                   {Line, Expect} <- Tests ]
+       end
+      },
+
+      {"parse_metric bad sample rate",
+       generator,
+       fun() ->
+               EatAt = fun([$@|S]) ->
+                               list_to_binary(S)
+                       end,
+               SampleRates = ["@0.a", "@01", "@5", "@0.1x"],
+               Expects = [ {bad_metric, {bad_sample_rate, EatAt(S)}}
+                           || S <- SampleRates ],
+               Tests = [ {iolist_to_binary([<<"x:1|m|">>, S]), E}
+                         || {S, E} <- lists:zip(SampleRates, Expects) ],
+               [ ?_assertEqual(Expect, parse_metric(Line)) ||
+                   {Line, Expect} <- Tests ]
        end
       }
+      
      ]}.
              
 
+% TODO:
+% - put record def into header
