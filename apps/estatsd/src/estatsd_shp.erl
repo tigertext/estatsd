@@ -8,18 +8,19 @@
 
 -type shp_metric_type() :: 'm' | 'mr' | 'g' | 'h'.
 
--record(shp_metric, {key :: binary(),
-                     value :: integer(),
-                     type :: shp_metric_type(),
-                     sample_rate :: float()}).
-
-% 1|26\nmyWebservice.requests:1|m
+-record(shp_metric, {key         :: binary(),
+                     value       :: integer(),
+                     type        :: shp_metric_type(),
+                     sample_rate :: float() | undefined}).
 
 -spec parse_packet(binary()) ->
         {bad_version, binary()}
         | {bad_length, {integer(), binary()}}
-        | {?SHP_VERSION, non_neg_integer(), [#shp_metric{}]}.
-                                     
+        | {?SHP_VERSION, non_neg_integer(),
+           [#shp_metric{}|{bad_metric, term()}]}.
+
+% @doc Parse a binary in Stats Hero Protocol Version 1
+%
 parse_packet(<<"1|", Rest/binary>>) ->
     parse_packet(Rest, []);
 parse_packet(Packet) when is_binary(Packet) ->
@@ -45,6 +46,9 @@ parse_packet(<<C:8, Rest/binary>>, Acc) ->
 parse_packet(<<>>, Acc) ->
     {bad_length, {lists:reverse(Acc), <<>>}}.
 
+-spec parse_body({non_neg_integer(), binary()}) ->
+    [(#shp_metric{} | {bad_metric, term()})].
+
 parse_body({Length, GZBody = <<31, 139, _Rest/binary>>}) ->
     Body = zlib:gunzip(GZBody),
     parse_body({Length, Body});
@@ -60,6 +64,8 @@ parse_body({_Length, Body}) ->
     
     end.
 
+-spec parse_metric(binary()) -> #shp_metric{}.
+
 parse_metric(Bin) ->
     try
         [Key, Value, Type | Rate] = binary:split(Bin, [<<":">>, <<"|">>],
@@ -73,6 +79,8 @@ parse_metric(Bin) ->
             {bad_metric, {parse_error, Bin}}
     end.
 
+-spec parse_type(binary()) -> atom().
+
 parse_type(<<"m">>) ->
     m;
 parse_type(<<"h">>) ->
@@ -83,6 +91,8 @@ parse_type(<<"g">>) ->
     g;
 parse_type(Unknown) ->
     throw({bad_metric, {unknown_type, Unknown}}).
+
+-spec parse_sample_rate([binary()]) -> float().
 
 parse_sample_rate([]) ->
     undefined;
@@ -95,6 +105,8 @@ parse_sample_rate([<<"@", FloatBin/binary>>]) ->
     end;
 parse_sample_rate(L) ->
     throw({bad_metric, {bad_sample_rate, L}}).
+
+-spec to_int(binary()) -> integer().
 
 to_int(Value) when is_binary(Value) ->
     try
