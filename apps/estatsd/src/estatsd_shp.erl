@@ -47,6 +47,9 @@ parse_packet(<<C:8, Rest/binary>>, Acc) ->
 parse_packet(<<>>, Acc) ->
     {bad_length, {lists:reverse(Acc), <<>>}}.
 
+parse_body({Length, GZBody = <<31, 139, _Rest/binary>>}) ->
+    Body = zlib:gunzip(GZBody),
+    parse_body({Length, Body});
 parse_body({_Length, Body}) ->
     try
         Lines = binary:split(Body, <<"\n">>, [global]),
@@ -175,6 +178,24 @@ estatsd_shp_test_() ->
                [ ?_assertEqual(Expect, parse_line(In)) ||
                   {In, Expect} <- Tests ]
        end
+      },
+
+      {"gzip compressed body",
+       fun() ->
+               Body = <<"a_label:1|m">>,
+               GZBody = zlib:gzip(Body),
+               % we add one for the '\n'.  Not sure the \n should be
+               % included in the length.
+               BodySize = integer_to_list(size(GZBody) + 1),
+               Packet = iolist_to_binary(["1|", BodySize, "\n",
+                                          GZBody]),
+               ?assertEqual([#shp_metric{key = <<"a_label">>,
+                                         value = 1,
+                                         type = m,
+                                         sample_rate = undefined}],
+                            parse_packet(Packet))
+       end
+               
       },
 
       {"parse_line invalid metric tests",
