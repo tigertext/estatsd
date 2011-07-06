@@ -6,12 +6,7 @@
 
 -define(SHP_VERSION, 1).
 
--type shp_metric_type() :: 'm' | 'mr' | 'g' | 'h'.
-
--record(shp_metric, {key         :: binary(),
-                     value       :: integer(),
-                     type        :: shp_metric_type(),
-                     sample_rate :: float() | undefined}).
+-include("estatsd.hrl").
 
 -spec parse_packet(binary()) ->
         {bad_version, binary()}
