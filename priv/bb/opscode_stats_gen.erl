@@ -31,18 +31,24 @@ legacy_stat() ->
     list_to_binary([Name, "|", Value, "|", Type]).
     
 new_value(Type) when Type =:= <<"d">>;
-                     Type =:= <<"c">> ->
+                     Type =:= <<"c">>;
+                     Type =:= <<"h">>;
+                     Type =:= <<"mr">> ->
     integer_to_list(crypto:rand_uniform(1, 25));
-new_value(<<"ms">>) ->
+new_value(Type) when Type =:= <<"ms">>;
+                     Type =:= <<"m">> ->
     integer_to_list(crypto:rand_uniform(1, 5000));
 new_value(<<"e">>) ->
     integer_to_list(crypto:rand_uniform(1, 500)).
 
+% random_name/0 and random_shp_name/0 determine how many unique
+% metrics will be tracked in the system during the benchmark run.
+
 random_name() ->
-    io_lib:format("metric~4..0B", [crypto:rand_uniform(1, 500)]).
+    io_lib:format("metric~4..0B", [crypto:rand_uniform(1, 1000)]).
 
 random_shp_name() ->
-    io_lib:format("shp_metric~4..0B", [crypto:rand_uniform(1, 500)]).
+    io_lib:format("shp_metric~4..0B", [crypto:rand_uniform(1, 1000)]).
 
 select_type() ->
     lists:nth(crypto:rand_uniform(1, ?TYPE_COUNT), ?TYPES).
