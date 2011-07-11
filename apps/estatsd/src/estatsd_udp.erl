@@ -4,6 +4,8 @@
 
 -define(to_int(Value), list_to_integer(binary_to_list(Value))).
 
+-include("estatsd.hrl").
+
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
@@ -91,19 +93,26 @@ handle_messages(Batch) ->
     [ handle_message(M) || M <- Batch ],
     ok.
 
+is_legacy_message(<<"1|", _Rest/binary>>) ->
+    false;
+is_legacy_message(_Bin) ->
+    true.
+
 handle_message(Bin) ->
+    case is_legacy_message(Bin) of
+        true -> handle_legacy_message(Bin);
+        false -> handle_shp_message(Bin)
+    end.
+
+handle_shp_message(Bin) ->
+    [ send_metric(Type, Key, Value)
+      || #shp_metric{key = Key, value = Value,
+                     type = Type} <- estatsd_shp:parse_packet(Bin) ].
+
+handle_legacy_message(Bin) ->
     try
-        [Header | Lines] = binary:split(Bin, <<"\n">>, [global]),
-	case binary:split(Header, [<<":">>, <<"|">>], [global]) of
-	    [_MsgCount, _Length] ->
-		%% new format with length and size
-%		MsgCount = length(Lines-1), % trailing empty line expected
-		[ parse_line(L) || L <- Lines ];
-	    [_Key, _Value, _Type] ->
-		% old format w/o length and size
-		[ parse_line(L) || L <- [Header | Lines] ]
-	end,
-        ok
+        Lines = binary:split(Bin, <<"\n">>, [global]),
+        [ parse_line(L) || L <- Lines ]
     catch
         error:Why ->
             error_logger:error_report({error, "handle_message failed",
@@ -114,8 +123,7 @@ parse_line(<<>>) ->
     skip;
 parse_line(Bin) ->
     [Key, Value, Type] = binary:split(Bin, [<<":">>, <<"|">>], [global]),
-    send_metric(Type, Key, Value),
-    ok.
+    send_metric(Type, Key, Value).
 
 send_metric(Type, Key, Value) ->
     FolsomKey = folsom_key_name(Type, Key),
@@ -123,9 +131,11 @@ send_metric(Type, Key, Value) ->
     send_folsom_metric(Status, Type, FolsomKey, Value),
     send_estatsd_metric(Type, Key, Value).
 
-send_estatsd_metric(Type = <<"ms">>, Key, Value) ->
+send_estatsd_metric(Type, Key, Value)
+  when Type =:= <<"ms">> orelse Type =:= <<"h">> ->
     estatsd:timing(Key, convert_value(Type, Value));
-send_estatsd_metric(Type = <<"c">>, Key, Value) ->
+send_estatsd_metric(Type, Key, Value)
+  when Type =:= <<"c">> orelse Type =:= <<"m">> ->
     estatsd:increment(Key, convert_value(Type, Value));
 send_estatsd_metric(_Type, _Key, _Value) ->
     % if it isn't one of the above types, we ignore the request.
@@ -133,10 +143,12 @@ send_estatsd_metric(_Type, _Key, _Value) ->
 
 send_folsom_metric(blacklisted, _, _, _) ->
     skipped;
-send_folsom_metric({ok, _}, Type = <<"c">>, Key, Value) ->
+send_folsom_metric({ok, _}, Type, Key, Value)
+  when Type =:= <<"c">> orelse Type =:= <<"m">> ->
     % TODO: avoid event handler, go direct to folsom
     folsom_metrics_meter:mark(Key, convert_value(Type, Value));
-send_folsom_metric({ok, _}, Type = <<"ms">>, Key, Value) ->
+send_folsom_metric({ok, _}, Type, Key, Value)
+  when Type =:= <<"ms">> orelse Type =:= <<"h">> ->
     folsom_metrics_histogram:update(Key, convert_value(Type, Value));
 send_folsom_metric({ok, _}, Type = <<"mr">>, Key, Value) ->
     folsom_metrics_meter_reader:mark(Key, convert_value(Type, Value));
@@ -145,12 +157,14 @@ send_folsom_metric({ok, _}, Type, Key, Value) ->
 
 convert_value(<<"e">>, Value) ->
     Value;
-convert_value(_Type, Value) ->
-    ?to_int(Value).
+convert_value(_Type, Value) when is_binary(Value) ->
+    ?to_int(Value);
+convert_value(_Type, Value) when is_integer(Value) ->
+    Value.
 
-folsom_key_name(<<"c">>, Key) ->
+folsom_key_name(Type, Key) when Type =:= <<"m">> orelse Type =:= <<"c">> ->
     iolist_to_binary([<<"stats.">>, Key]);
-folsom_key_name(<<"ms">>, Key) ->
+folsom_key_name(Type, Key) when Type =:= <<"h">> orelse Type =:= <<"ms">> ->
     iolist_to_binary([<<"stats.timers.">>, Key]);
 folsom_key_name(_Type, Key) ->
     Key.
