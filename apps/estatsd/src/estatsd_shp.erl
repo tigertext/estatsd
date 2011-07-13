@@ -29,7 +29,7 @@ parse_packet(<<"\n", Rest/binary>>, Acc) ->
                  error:badarg ->
                      Acc1
              end,
-    Actual = size(Rest) + 1, % to account for the consumed \n
+    Actual = size(Rest),
     case Length =:= Actual of
         true ->
             parse_body({Length, Rest});
@@ -56,7 +56,7 @@ parse_body({_Length, Body}) ->
             error_logger:error_report({bad_metric,
                                        {Body, Why, erlang:get_stacktrace()}}),
             throw({bad_metric_body, Body})
-    
+
     end.
 
 -spec parse_metric(binary()) -> #shp_metric{}.
@@ -122,12 +122,47 @@ estatsd_shp_test_() ->
      [
       {"parse_packet valid packet",
        fun() ->
-               Packet = <<"1|12\na_label:1|m">>,
-               ?assertEqual([#shp_metric{key = <<"a_label">>,
-                                       value = 1,
-                                       type = m,
-                                        sample_rate = undefined}],
-                            parse_packet(Packet))
+
+           Packet = <<"1|42\ndeploys.OpscodeAccount.application:1000|h\n">>,
+           ?assertEqual([#shp_metric{key = <<"deploys.OpscodeAccount.application">>,
+                                     value = 1000,
+                                     type = h,
+                                     sample_rate = undefined}],
+                        parse_packet(Packet))
+       end
+      },
+
+      {"parse_packet packet no trailing LF",
+       fun() ->
+
+           Packet = <<"1|41\ndeploys.OpscodeAccount.application:1000|h">>,
+           ?assertEqual([#shp_metric{key = <<"deploys.OpscodeAccount.application">>,
+                                     value = 1000,
+                                     type = h,
+                                     sample_rate = undefined}],
+                        parse_packet(Packet))
+       end
+      },
+
+      {"parse_packet multiple metrics",
+       fun() ->
+           NumMetrics = 20,
+           IO = lists:map(fun(I) ->
+                              C = integer_to_list(I),
+                              ["metric-", C, ":", C, "|h\n"]
+                          end, lists:seq(1, NumMetrics)),
+           Body = iolist_to_binary(IO),
+           Size = integer_to_list(size(Body)),
+           Packet = iolist_to_binary(["1|", Size, "\n", Body]),
+           Metrics = parse_packet(Packet),
+           Expect = lists:map(fun(I) ->
+                                  C = integer_to_list(I),
+                                  #shp_metric{key = iolist_to_binary(["metric-", C]),
+                                              value = I,
+                                              type = h,
+                                              sample_rate = undefined}
+                              end, lists:seq(1, NumMetrics)),
+           ?assertEqual(Expect, Metrics)
        end
       },
 
@@ -145,14 +180,11 @@ estatsd_shp_test_() ->
       {"parse_packet content length mismatch",
        generator,
        fun() ->
-               BadLength = [{<<"1|11\na_label:1|m">>,
-                             {11, <<"a_label:1|m">>}},
-                             
-                            {<<"1|12\nx:1|m">>,
-                             {12, <<"x:1|m">>}},
-                            
-                            {<<"1|11\na_label:1|m">>,
-                            {11, <<"a_label:1|m">>}}
+               BadLength = [{<<"1|11\na_label:1|m\n">>,
+                             {11, <<"a_label:1|m\n">>}},
+
+                            {<<"1|12\nx:1|m\n">>,
+                             {12, <<"x:1|m\n">>}}
                            ],
                [ ?_assertEqual({bad_length, {L, R}}, parse_packet(P))
                  || {P, {L, R}} <- BadLength ]
@@ -170,7 +202,7 @@ estatsd_shp_test_() ->
 
                           {<<"1|label:1|m">>,
                            {"label:1|m", <<>>}}
-                          
+
                          ],
 
                [ ?_assertEqual({bad_length, {L, R}}, parse_packet(P))
@@ -181,37 +213,36 @@ estatsd_shp_test_() ->
       {"parse_metric valid metric tests",
        generator,
        fun() ->
-               Tests = [{<<"label:1|m">>,
-                         #shp_metric{key = <<"label">>, value = 1, type = 'm'}},
+           Tests = [{<<"label:1|m">>,
+                     #shp_metric{key = <<"label">>, value = 1, type = 'm'}},
 
-                        {<<"label:123|h">>,
-                         #shp_metric{key = <<"label">>, value = 123,
-                                     type = 'h'}},
+                    {<<"label:123|h">>,
+                     #shp_metric{key = <<"label">>, value = 123,
+                                 type = 'h'}},
 
-                        {<<"x:-123|g">>,
-                         #shp_metric{key = <<"x">>, value = -123, type = 'g'}},
+                    {<<"x:-123|g">>,
+                     #shp_metric{key = <<"x">>, value = -123, type = 'g'}},
 
 
-                        {<<"x:123|h">>,
-                         #shp_metric{key = <<"x">>, value = 123, type = 'h'}},
+                    {<<"x:123|h">>,
+                     #shp_metric{key = <<"x">>, value = 123, type = 'h'}},
 
-                        % sample rate
-                        {<<"x:123|h|@0.43">>,
-                         #shp_metric{key = <<"x">>, value = 123, type = 'h',
-                                     sample_rate = 0.43}}
-                       ],
-               [ ?_assertEqual(Expect, parse_metric(In)) ||
-                  {In, Expect} <- Tests ]
+                    % sample rate
+                    {<<"x:123|h|@0.43">>,
+                     #shp_metric{key = <<"x">>, value = 123, type = 'h',
+                                 sample_rate = 0.43}}
+                   ],
+           [ ?_assertEqual(Expect, parse_metric(In)) || {In, Expect} <- Tests ]
        end
       },
 
       {"gzip compressed body",
        fun() ->
-               Body = <<"a_label:1|m">>,
+               Body = <<"a_label:1|m\n">>,
                GZBody = zlib:gzip(Body),
                % we add one for the '\n'.  Not sure the \n should be
                % included in the length.
-               BodySize = integer_to_list(size(GZBody) + 1),
+               BodySize = integer_to_list(size(GZBody)),
                Packet = iolist_to_binary(["1|", BodySize, "\n",
                                           GZBody]),
                ?assertEqual([#shp_metric{key = <<"a_label">>,
@@ -220,7 +251,7 @@ estatsd_shp_test_() ->
                                          sample_rate = undefined}],
                             parse_packet(Packet))
        end
-               
+
       },
 
       {"parse_metric bad metrics",
@@ -256,9 +287,5 @@ estatsd_shp_test_() ->
                    {Line, Expect} <- Tests ]
        end
       }
-      
-     ]}.
-             
 
-% TODO:
-% - put record def into header
+     ]}.
