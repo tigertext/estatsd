@@ -1,3 +1,4 @@
 apps/estatsd/ebin/*
 deps
 rel/estatsd
+.eunit
