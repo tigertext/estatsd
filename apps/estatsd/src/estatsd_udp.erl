@@ -105,7 +105,7 @@ handle_message(Bin) ->
     end.
 
 handle_shp_message(Bin) ->
-    [ send_metric(Type, Key, Value)
+    [ send_metric(erlang:atom_to_binary(Type, utf8), Key, Value)
       || #shp_metric{key = Key, value = Value,
                      type = Type} <- estatsd_shp:parse_packet(Bin) ].
 
