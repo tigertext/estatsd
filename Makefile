@@ -3,16 +3,16 @@ DEPS = deps/folsom deps/ibrowse deps/mochiweb deps/webmachine
 all: compile
 
 compile: $(DEPS)
-	@./rebar compile
+	@rebar compile
 
 $(DEPS):
-	@./rebar get-deps
+	@rebar get-deps
 
 clean:
-	@./rebar skip_deps=true clean
+	@rebar skip_deps=true clean
 
 depclean:
-	@./rebar clean
+	@rebar clean
 
 relclean:
 	@rm -rf rel/estatsd
@@ -27,6 +27,6 @@ devrel: rel
 	@rm -rf rel/estatsd/lib/estatsd-*;ln -s $(abspath apps/estatsd) rel/estatsd/lib
 
 rel/estatsd:
-	@./rebar generate
+	@rebar generate
 
 deploy: relclean rel
