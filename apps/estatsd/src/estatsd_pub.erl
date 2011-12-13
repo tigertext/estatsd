@@ -10,7 +10,7 @@ start_link() ->
   lists:foreach(
     fun(Handler) ->
       gen_event:add_handler(Pid, Handler),
-      error_logger:info_msg("estatsd_pub added handler: '~s'~n", [Handler])
+      error_logger:info_msg("[~s] Added handler: '~w'~n", [?MODULE, Handler])
     end,
     HandlerList
   ).
