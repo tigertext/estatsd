@@ -1,185 +1,138 @@
-%% Stats aggregation process that periodically dumps data to graphite
-%% Will calculate 90th percentile etc.
-%% Inspired by etsy statsd:
-%% http://codeascraft.etsy.com/2011/02/15/measure-anything-measure-everything/
-%%
-%% This could be extended to take a callback for reporting mechanisms.
-%% Right now it's hardcoded to stick data into graphite.
-%%
-%% Richard Jones <rj@metabrew.com>
-%%
--module(estatsd_server).
--behaviour(gen_server).
+%%% Stats Aggregation Process.
+%%% Periodically dumps metrics to a graphing system of your choice.
+%%% Inspired by etsy statsd:
+%%% http://codeascraft.etsy.com/2011/02/15/measure-anything-measure-everything
+%%%
+%%% Richard Jones <rj@metabrew.com>
+%%% Johannes Huning <hi@johanneshuning.com>
 
--export([start_link/0]).
+-module (estatsd_server).
 
-%-export([key2str/1,flush/0]). %% export for debugging 
+-behaviour (gen_server).
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, 
-         terminate/2, code_change/3]).
+% Client API
+-export([
+  start_link/0
+]).
 
--record(state, {timers,             % gb_tree of timer data
-                flush_interval,     % ms interval between stats flushing
-                flush_timer,        % TRef of interval timer
-                graphite_host,      % graphite server host
-                graphite_port       % graphite server port
-               }).
+% Callback functions for gen_server
+-export([
+  init/1,
+  handle_call/3,
+  handle_cast/2,
+  handle_info/2,
+  terminate/2,
+  code_change/3
+]).
 
+%% @doc estatsd process state.
+-record(state, {
+  timers,          % Timer Metrics stored in a gb_tree
+  flush_interval,  % Interval between stats flushing, in ms
+  flush_timer      % Reference to the interval timer
+}).
+
+
+%% @doc Starts estatsd.
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+  gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-%%
 
-init([]) ->
-    {ok, FlushIntervalMs} = application:get_env(estatsd, flush_interval),
-    {ok, GraphiteHost} = application:get_env(estatsd, graphite_host),
-    {ok, GraphitePort} = application:get_env(estatsd, graphite_port),
-    error_logger:info_msg("estatsd will flush stats to ~p:~w every ~wms\n", 
-                          [ GraphiteHost, GraphitePort, FlushIntervalMs ]),
-    ets:new(statsd, [named_table, set]),
-    %% Flush out stats to graphite periodically
-    {ok, Tref} = timer:apply_interval(FlushIntervalMs, gen_server, cast, 
-                                                       [?MODULE, flush]),
-    State = #state{ timers          = gb_trees:empty(),
-                    flush_interval  = FlushIntervalMs,
-                    flush_timer     = Tref,
-                    graphite_host   = GraphiteHost,
-                    graphite_port   = GraphitePort
-                  },
-    {ok, State}.
+%% @doc gen_server callback,
+init(_InitArgs) ->
+  % Retrieve the startup options
+  {ok, FlushInterval} = application:get_env(estatsd, flush_interval),
+  error_logger:info_msg(
+    "[~s] Going to flush stats every ~wms~n", [?MODULE, FlushInterval]),
 
-handle_cast({increment, Key, Delta0, Sample}, State) when Sample >= 0, Sample =< 1 ->
-    Delta = Delta0 * ( 1 / Sample ), %% account for sample rates < 1.0
-    case ets:lookup(statsd, Key) of
-        [] ->
-            ets:insert(statsd, {Key, {Delta,1}});
-        [{Key,{Tot,Times}}] ->
-            ets:insert(statsd, {Key,{Tot+Delta, Times+1}}),
-            ok
-    end,
-    {noreply, State};
+  % Initialize the table for counter metrics
+  ets:new(statsd, [named_table, set]),
 
+  % Flush out stats to graphite periodically
+  {ok, TimerRef} = timer:apply_interval(
+    FlushInterval, gen_server, cast, [?MODULE, flush]),
+
+  State = #state{
+    timers         = gb_trees:empty(),
+    flush_interval = FlushInterval,
+    flush_timer    = TimerRef
+  },
+  {ok, State}.
+
+
+%% @doc gen_server callback, increments or creates the given counter.
+handle_cast({increment, Key, IncrementBy, SampleRate}, State)
+    % Only handle increments with proper sample rates
+    when SampleRate >= 0 andalso SampleRate =< 1 ->
+
+  % Account for sample rates < 1.0
+  Delta = IncrementBy * (1 / SampleRate),
+  case ets:lookup(statsd, Key) of
+    % Initialize new counters
+    % The table holds both the counters value and the number of increments
+    [] -> ets:insert(statsd, {Key, {Delta, 1}});
+
+    % Otherwise update the counter
+    [{Key, {Total, Times}}] ->
+      ets:insert(statsd, {Key, {Total + Delta, Times + 1}})
+  end,
+  {noreply, State};
+
+
+%% @doc gen_server callback, logs 'n drops increments with invalid sample rates.
+handle_cast({increment, Key, _IncrementBy, SampleRate}, State) ->
+  error_logger:warning_msg(
+    "[~s] Requested to increment '~s' with invalid sample rate of: ~f~n",
+    [?MODULE, Key, SampleRate]),
+  {noreply, State};
+
+
+%% @doc gen_server callback, inserts or updates the timing for the given timer.
 handle_cast({timing, Key, Duration}, State) ->
-    case gb_trees:lookup(Key, State#state.timers) of
-        none ->
-            {noreply, State#state{timers = gb_trees:insert(Key, [Duration], State#state.timers)}};
-        {value, Val} ->
-            {noreply, State#state{timers = gb_trees:update(Key, [Duration|Val], State#state.timers)}}
-    end;
+  case gb_trees:lookup(Key, State#state.timers) of
+    none ->
+      {noreply, State#state{timers = gb_trees:insert(Key, [Duration], State#state.timers)}};
+    {value, Val} ->
+      {noreply, State#state{timers = gb_trees:update(Key, [Duration|Val], State#state.timers)}}
+  end;
 
+
+%% @doc Flushes the current metrics to estats_pub.
 handle_cast(flush, State) ->
-    All = ets:tab2list(statsd),
-    spawn( fun() -> do_report(All, State) end ),
-    %% WIPE ALL
-    ets:delete_all_objects(statsd),
-    NewState = State#state{timers = gb_trees:empty()},
-    {noreply, NewState}.
+  % Publish the metrics in another process
+  Counters = ets:tab2list(statsd),
+  Timers = gb_trees:to_list(State#state.timers),
+  spawn(fun() -> publish_metrics_(Counters, Timers) end ),
 
-handle_call(_,_,State)      -> {reply, ok, State}.
+  % Clear the metrics table and reset all timing counters
+  ets:delete_all_objects(statsd),
+  NewState = State#state{timers = gb_trees:empty()},
+  % Continue with a blank slate
+  {noreply, NewState}.
 
-handle_info(_Msg, State)    -> {noreply, State}.
 
-code_change(_, _, State)    -> {noreply, State}.
+%% @doc Publishes the metrics using the estats_pub event manager
+publish_metrics_(Counters, Timers) ->
+  gen_event:notify(estatsd_pub, {publish, Counters, Timers}).
 
-terminate(_, _)             -> ok.
 
-%% INTERNAL STUFF
+%% @doc gen_server callback, logs and drops.
+handle_call(Request, From, State) ->
+  error_logger:warning_msg(
+    "[~s] Ignored call '~p' from '~w'~n", [?MODULE, Request, From]),
+  {reply, ok, State}.
 
-send_to_graphite(Msg, State) ->
-    error_logger:info_msg("sending data to graphite~n"),
-    % io:format("SENDING: ~s\n", [Msg]),
-    case gen_tcp:connect(State#state.graphite_host,
-                         State#state.graphite_port,
-                         [list, {packet, 0}]) of
-        {ok, Sock} ->
-            gen_tcp:send(Sock, Msg),
-            gen_tcp:close(Sock),
-            ok;
-        E ->
-            %error_logger:error_msg("Failed to connect to graphite: ~p", [E]),
-            E
-    end.
 
-% this string munging is damn ugly compared to javascript :(
-key2str(K) when is_atom(K) -> 
-    atom_to_list(K);
-key2str(K) when is_binary(K) -> 
-    key2str(binary_to_list(K));
-key2str(K) when is_list(K) ->
-    {ok, R1} = re:compile("\\s+"),
-    {ok, R2} = re:compile("/"),
-    {ok, R3} = re:compile("[^a-zA-Z_\\-0-9\\.]"),
-    Opts = [global, {return, list}],
-    S1 = re:replace(K,  R1, "_", Opts),
-    S2 = re:replace(S1, R2, "-", Opts),
-    S3 = re:replace(S2, R3, "", Opts),
-    S3.
+%% @doc gen_server callback, logs and drops.
+handle_info(Info, State) ->
+  error_logger:info_msg(
+    "[~s] Ignored info '~p'~n", [?MODULE, Info]),
+  {noreply, State}.
 
-num2str(NN) -> lists:flatten(io_lib:format("~w",[NN])).
 
-unixtime()  -> {Meg,S,_Mic} = erlang:now(), Meg*1000000 + S.
+%% @doc gen_server callback, continues with the old state.
+code_change(_OldVsn, State, _Extra) -> {noreply, State}.
 
-%% Aggregate the stats and generate a report to send to graphite
-do_report(All, State) ->
-    % One time stamp string used in all stats lines:
-    TsStr = num2str(unixtime()),
-    {MsgCounters, NumCounters} = do_report_counters(All, TsStr, State),
-    {MsgTimers,   NumTimers}   = do_report_timers(TsStr, State),
-    %% REPORT TO GRAPHITE
-    case NumTimers + NumCounters of
-        0 -> nothing_to_report;
-        NumStats ->
-            FinalMsg = [ MsgCounters,
-                         MsgTimers,
-                         %% Also graph the number of graphs we're graphing:
-                         "statsd.numStats ", num2str(NumStats), " ", TsStr, "\n"
-                       ],
-            send_to_graphite(FinalMsg, State)
-    end.
 
-do_report_counters(All, TsStr, State) ->
-    Msg = lists:foldl(
-                fun({Key, {Val0,NumVals}}, Acc) ->
-                        KeyS = key2str(Key),
-                        Val = Val0 / (State#state.flush_interval/1000),
-                        %% Build stats string for graphite
-                        Fragment = [ "stats.", KeyS, " ", 
-                                     io_lib:format("~w", [Val]), " ", 
-                                     TsStr, "\n",
-
-                                     "stats_counts.", KeyS, " ", 
-                                     io_lib:format("~w",[NumVals]), " ", 
-                                     TsStr, "\n"
-                                   ],
-                        [ Fragment | Acc ]                    
-                end, [], All),
-    {Msg, length(All)}.
-
-do_report_timers(TsStr, State) ->
-    Timings = gb_trees:to_list(State#state.timers),
-    Msg = lists:foldl(
-        fun({Key, Vals}, Acc) ->
-                KeyS = key2str(Key),
-                Values          = lists:sort(Vals),
-                Count           = length(Values),
-                Min             = hd(Values),
-                Max             = lists:last(Values),
-                PctThreshold    = 90,
-                ThresholdIndex  = erlang:round(((100-PctThreshold)/100)*Count),
-                NumInThreshold  = Count - ThresholdIndex,
-                Values1         = lists:sublist(Values, NumInThreshold),
-                MaxAtThreshold  = lists:nth(NumInThreshold, Values),
-                Mean            = lists:sum(Values1) / NumInThreshold,
-                %% Build stats string for graphite
-                Startl          = [ "stats.timers.", KeyS, "." ],
-                Endl            = [" ", TsStr, "\n"],
-                Fragment        = [ [Startl, Name, " ", num2str(Val), Endl] || {Name,Val} <-
-                                  [ {"mean", Mean},
-                                    {"upper", Max},
-                                    {"upper_"++num2str(PctThreshold), MaxAtThreshold},
-                                    {"lower", Min},
-                                    {"count", Count}
-                                  ]],
-                [ Fragment | Acc ]
-        end, [], Timings),
-    {Msg, length(Msg)}.
+%% @doc gen_server callback, just returns ok.
+terminate(_Arg, _State) -> ok.
