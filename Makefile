@@ -1,4 +1,4 @@
-DEPS = deps/folsom deps/ibrowse deps/mochiweb deps/webmachine
+DEPS = deps/erest deps/elibrato
 
 all: compile
 
