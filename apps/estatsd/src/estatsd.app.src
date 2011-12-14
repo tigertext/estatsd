@@ -1,12 +1,29 @@
-{application, estatsd,
- [
-  {description, "Stats aggregation service that writes to graphite"},
+{application, estatsd, [
+  % A short description
+  {description,
+    "Stats aggregation service writing to a graphing system of your choice"},
+
+  % Pull the version number from git
   {vsn, git},
-  {registered, []},
+
+  % All names of registered processes in the application. systools uses this
+  % list to detect name clashes between applications.
+  {registered, [
+    estatsd_sup,
+    estatsd_udp,
+    estatsd_server,
+    estatsd_pub
+  ]},
+
+  % All applications which must be started before this application is started.
+  % systools uses this list to generate correct boot scripts.
   {applications, [
-                  kernel,
-                  stdlib
-                 ]},
-  {mod, { estatsd_app, []}},
-  {env, []}
+    kernel,
+    stdlib
+  ]},
+
+  % The application master starts the application by calling the application
+  % callback function start/2 in the module, and with the start argument,
+  % defined here:
+  {mod, {estatsd_app, []}}
  ]}.
