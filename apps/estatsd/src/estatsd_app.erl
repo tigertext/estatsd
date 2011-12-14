@@ -2,15 +2,15 @@
 
 -behaviour(application).
 
-%% Application callbacks
--export([start/2, stop/1]).
+% application behaviour callbacks
+-export([
+  start/2,
+  stop/1
+]).
 
-%% ===================================================================
-%% Application callbacks
-%% ===================================================================
 
-start(_StartType, _StartArgs) ->
-    estatsd_sup:start_link().
+% @doc application callback, starts the estatsd main supervisor
+start(_StartType, _StartArgs) -> estatsd_sup:start_link().
 
-stop(_State) ->
-    ok.
+% @doc application callback, Just ok.
+stop(_State) -> ok.
