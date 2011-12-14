@@ -102,7 +102,7 @@ handle_cast(flush, State) ->
   % Publish the metrics in another process
   Counters = ets:tab2list(statsd),
   Timers = gb_trees:to_list(State#state.timers),
-  spawn(fun() -> publish_metrics_(Counters, Timers) end ),
+  spawn(fun() -> publish_metrics_({Counters, Timers}) end ),
 
   % Clear the metrics table and reset all timing counters
   ets:delete_all_objects(statsd),
@@ -112,8 +112,8 @@ handle_cast(flush, State) ->
 
 
 %% @doc Publishes the metrics using the estats_pub event manager
-publish_metrics_(Counters, Timers) ->
-  gen_event:notify(estatsd_pub, {publish, Counters, Timers}).
+publish_metrics_(Metrics) ->
+  gen_event:notify(estatsd_pub, {publish, Metrics}).
 
 
 %% @doc gen_server callback, logs and drops.
