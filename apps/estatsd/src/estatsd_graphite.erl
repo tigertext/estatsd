@@ -56,3 +56,15 @@ terminate(Arg, State) -> undefined.
 
 % @doc gen_event callback,
 code_change(OldVsn, State, Extra) -> undefined.
+
+
+% @doc
+publish_(Metrics, State) -> undefined.
+
+
+% @doc
+render_(Metrics) -> undefined.
+
+
+% @doc
+send_(Message) -> undefined.
