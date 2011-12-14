@@ -89,11 +89,19 @@ handle_cast({increment, Key, _IncrementBy, SampleRate}, State) ->
 
 %% @doc gen_server callback, inserts or updates the timing for the given timer.
 handle_cast({timing, Key, Duration}, State) ->
-  case gb_trees:lookup(Key, State#state.timers) of
+  Timers = State#state.timers,
+  case gb_trees:lookup(Key, Timers) of
+    % Initialize new timers
     none ->
-      {noreply, State#state{timers = gb_trees:insert(Key, [Duration], State#state.timers)}};
+      {noreply, State#state{
+        timers = gb_trees:insert(Key, [Duration], Timers)
+      }};
+
+    % Otherwise just append the measured duration
     {value, Val} ->
-      {noreply, State#state{timers = gb_trees:update(Key, [Duration|Val], State#state.timers)}}
+      {noreply, State#state{
+        timers = gb_trees:update(Key, [Duration|Val], Timers)
+      }}
   end;
 
 
