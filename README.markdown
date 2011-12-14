@@ -1,11 +1,14 @@
-estatsd is a simple stats aggregation service that periodically dumps data to
-Graphite: http://graphite.wikidot.com/
+# About
 
-NB: Graphite is good, despite the website being a bit ghetto.
+`estatsd` is a simple stats aggregation service that periodically dumps data to
+a graphing system of your choice such as
+[Graphite](http://graphite.wikidot.com/)
+or [Librato Metrics](https://metrics.librato.com/).
 
-Inspired heavily by etsy statsd:
-http://codeascraft.etsy.com/2011/02/15/measure-anything-measure-everything/
+Inspired heavily by [Etsy's statsd](http://goo.gl/h3Ztp).
 
+
+<!-- TODO: Rewrite!
 QUICK DEMO
 ==========
 
@@ -67,3 +70,4 @@ Right now it's hardcoded to stick data into graphite.
 
 Richard Jones <rj@metabrew.com>
 @metabrew
+ -->
