@@ -11,12 +11,12 @@
 -behaviour (gen_server).
 
 % Client API
--export([
+-export ([
   start_link/0
 ]).
 
 % Callback functions for gen_server
--export([
+-export ([
   init/1,
   handle_call/3,
   handle_cast/2,
@@ -26,7 +26,7 @@
 ]).
 
 %% @doc estatsd process state.
--record(state, {
+-record (state, {
   timers,          % Timer Metrics stored in a gb_tree
   flush_interval,  % Interval between stats flushing, in ms
   flush_timer      % Reference to the interval timer

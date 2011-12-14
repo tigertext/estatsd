@@ -1,6 +1,10 @@
 -module (estatsd_pub).
 
--export ([start_link/0]).
+% Client API
+-export ([
+  start_link/0
+]).
+
 
 %% @doc Starts the estatsd event manager to publish metrics via its handlers.
 start_link() ->

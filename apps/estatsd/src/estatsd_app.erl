@@ -1,9 +1,9 @@
--module(estatsd_app).
+-module (estatsd_app).
 
--behaviour(application).
+-behaviour (application).
 
 % application behaviour callbacks
--export([
+-export ([
   start/2,
   stop/1
 ]).

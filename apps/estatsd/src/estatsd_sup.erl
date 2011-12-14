@@ -1,14 +1,14 @@
--module(estatsd_sup).
+-module (estatsd_sup).
 
--behaviour(supervisor).
+-behaviour (supervisor).
 
 %% Client API
--export([
+-export ([
   start_link/0
 ]).
 
 % supervisor behaviour callbacks
--export([
+-export ([
   init/1
 ]).
 

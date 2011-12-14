@@ -1,22 +1,22 @@
--module(estatsd_udp).
--behaviour(gen_server).
--define(SERVER, ?MODULE).
+-module (estatsd_udp).
+-behaviour (gen_server).
+-define (SERVER, ?MODULE).
 
--define(to_int(Value), list_to_integer(binary_to_list(Value))).
+-define (to_int(Value), list_to_integer(binary_to_list(Value))).
 
--include("estatsd.hrl").
+-include ("estatsd.hrl").
 
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/0]).
+-export ([start_link/0]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
 %% ------------------------------------------------------------------
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
+-export ([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
 %% ------------------------------------------------------------------
@@ -29,7 +29,7 @@ start_link() ->
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
--record(state, {port          :: non_neg_integer(),
+-record (state, {port          :: non_neg_integer(),
                 socket        :: inet:socket(),
                 batch = []    :: [binary()],
                 batch_max     :: non_neg_integer(),

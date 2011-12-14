@@ -1,13 +1,13 @@
--module(estatsd).
+-module (estatsd).
 
 % Application Control
--export([
+-export ([
   start/0,
   stop/0
 ]).
 
 % Client API
--export([
+-export ([
   increment/1,
   increment/2,
   increment/3,
@@ -17,7 +17,7 @@
   timing/2
 ]).
 
--define(SERVER, estatsd_server).
+-define (SERVER, estatsd_server).
 
 %% @spec start() -> ok
 %% @doc Start the estatsd server.

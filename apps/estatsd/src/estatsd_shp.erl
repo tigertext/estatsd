@@ -1,12 +1,12 @@
--module(estatsd_shp).
+-module (estatsd_shp).
 
--export([parse_packet/1]).
+-export ([parse_packet/1]).
 
--include_lib("eunit/include/eunit.hrl").
+-include_lib ("eunit/include/eunit.hrl").
 
--define(SHP_VERSION, 1).
+-define (SHP_VERSION, 1).
 
--include("estatsd.hrl").
+-include ("estatsd.hrl").
 
 -spec parse_packet(binary()) ->
         {bad_version, binary()}
