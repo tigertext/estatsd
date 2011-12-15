@@ -1,22 +1,18 @@
 -module (estatsd_graphite).
 
--behaviour (gen_event).
+-behaviour (estatsd_adapter).
 
-% gen_event behaviour callbacks
+% estatsd_adapter behaviour callbacks
 -export ([
   init/1,
-  handle_event/2,
-  handle_call/2,
-  handle_info/2,
-  terminate/2,
-  code_change/3
+  handle_metrics/2
 ]).
 
 %% @doc estatsd_graphite process state, just hostname and port number.
 -record (state, {host, port}).
 
 
-%% @doc gen_event callback, builds the process' initial state.
+%% @doc estatsd_adapter callback, builds estatsd_graphite's initial state.
 init(_InitArgs) ->
   % Read the Graphite remote host configuration from the environment
   {ok, Host} = application:get_env(estatsd, graphite_host),
@@ -29,51 +25,8 @@ init(_InitArgs) ->
   {ok, State}.
 
 
-%% @doc gen_event callback, sends recorded metrics to Graphite.
-handle_event({publish, Metrics}, State) ->
-  % Publish the metrics in another process, immediately return.
-  spawn(fun() -> publish_(Metrics, State) end),
-  {ok, State};
-
-
-%% @doc gen_event callback, logs and drops unexpected events.
-handle_event(Event, State) ->
-  error_logger:warning_msg(
-    "[~s] Received unexpected event: '~p'~n", [?MODULE, Event]),
-  {ok, State}.
-
-
-%% @doc gen_event callback, synchronously sends recorded metrics to Graphite.
-handle_call({publish, Metrics}, State) ->
-  % Publish the metrics in the calling process, return only after delivery
-  Reply = publish_(Metrics, State),
-  {ok, State, Reply};
-
-
-%% @doc gen_event callback, logs and drops unexpected calls.
-handle_call(Request, State) ->
-  error_logger:warning_msg(
-    "[~s] Received unexpected call: '~p'~n", [?MODULE, Request]),
-  {ok, State, undefined}.
-
-
-%% @doc gen_event callback, logs and drops unexpected infos.
-handle_info(Info, State) ->
-  error_logger:warning_msg(
-    "[~s] Received unexpected info: '~p'~n", [?MODULE, Info]),
-  {ok, State}.
-
-
-%% @doc gen_event callback, Just the old state, no cleanup required.
-terminate(_Arg, State) -> State.
-
-
-%% @doc gen_event callback, Just the old state, no update required.
-code_change(_OldVsn, State, _Extra) -> State.
-
-
-%% @doc Aggregate the stats and generate a report to send to graphite
-publish_(Metrics, State) ->
+%% @doc estatsd_adapter callback, Sends the recorded metrics to Graphite.
+handle_metrics(Metrics, State) ->
   case render_(Metrics) of
     % Don't actuelly send anything if there is nothing to report
     undefined -> ok;

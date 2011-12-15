@@ -13,9 +13,9 @@ start_link() ->
   {ok, HandlerList} = application:get_env(estatsd, handler_list),
   % Add all the handlers asked for to the event manager
   lists:foreach(
-    fun(Handler) ->
-      gen_event:add_handler(Pid, Handler),
-      error_logger:info_msg("[~s] Added handler: '~w'~n", [?MODULE, Handler])
+    fun({Adapter, Args}) ->
+      gen_event:add_handler(Pid, estatsd_adapter, Args),
+      error_logger:info_msg("[~s] Added handler: '~w'~n", [?MODULE, Adapter])
     end,
     HandlerList
   ).
