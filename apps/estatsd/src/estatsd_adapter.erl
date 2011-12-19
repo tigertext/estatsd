@@ -25,7 +25,8 @@
 behaviour_info(callbacks) ->
   [
     {init,1},
-    {handle_metrics, 2}
+    {handle_metrics, 2},
+    {sync_handle_metrics, 2}
   ];
 
 behaviour_info(_) -> undefined.
@@ -42,9 +43,7 @@ handle_event({publish, Metrics}, State) ->
   Adapter = State#state.adapter,
   AdapterState = State#state.adapter_state,
   % Publish the metrics in another process, immediately return
-  spawn(fun() -> Adapter:handle_metrics(Metrics, AdapterState) end),
-  % Do not respect any state changes in the adapter itself, just fire and forget
-  {ok, State};
+  Adapter:handle_metrics(Metrics, AdapterState);
 
 
 %% @doc gen_event callback, logs and drops unexpected events.
@@ -59,8 +58,7 @@ handle_call({publish, Metrics}, State) ->
   Adapter = State#state.adapter,
   AdapterState = State#state.adapter_state,
   % Publish the metrics in the calling process, return only after delivery
-  Reply = Adapter:handle_metrics(Metrics, AdapterState),
-  {ok, State, Reply};
+  Adapter:sync_handle_metrics(Metrics, AdapterState);
 
 
 %% @doc gen_event callback, logs and drops unexpected calls.

@@ -27,10 +27,16 @@ init(_InitArgs) ->
 
 %% @doc estatsd_adapter callback, Sends the recorded metrics to Graphite.
 handle_metrics(Metrics, State) ->
+  spawn(fun() -> sync_handle_metrics(Metrics, State) end),
+  {ok, State}.
+
+
+%% @doc estatsd_adapter callback, Sends the recorded metrics to Graphite.
+sync_handle_metrics(Metrics, State) ->
   case render_(Metrics) of
     % Don't actuelly send anything if there is nothing to report
-    undefined -> ok;
-    Message -> send_(Message, State)
+    undefined -> {ok, State, ok};
+    Message -> {ok, State, send_(Message, State)}
   end.
 
 
