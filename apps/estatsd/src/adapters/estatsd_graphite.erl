@@ -5,7 +5,8 @@
 % estatsd_adapter behaviour callbacks
 -export ([
   init/1,
-  handle_metrics/2
+  handle_metrics/2,
+  sync_handle_metrics/2
 ]).
 
 %% @doc estatsd_graphite process state, just hostname and port number.
