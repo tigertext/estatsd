@@ -122,7 +122,7 @@ handle_cast(flush, State) ->
 
 %% @doc Publishes the metrics using the estats_pub event manager
 publish_metrics_(Metrics) ->
-  gen_event:notify(estatsd_pub, {publish, Metrics}).
+  gen_event:notify(estatsd_adapter, {publish, Metrics}).
 
 
 %% @doc gen_server callback, logs and drops.
