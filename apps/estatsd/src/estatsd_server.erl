@@ -35,7 +35,6 @@
 
 %% @doc Starts estatsd.
 start_link() ->
-  gen_event:start_link({local, estatsd_adapter}),
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
@@ -43,8 +42,22 @@ start_link() ->
 init(_InitArgs) ->
   % Retrieve the startup options
   {ok, FlushInterval} = application:get_env(estatsd, flush_interval),
+  {ok, Adapters} = application:get_env(estatsd, adapters),
+
   error_logger:info_msg(
     "[~s] Going to flush stats every ~wms~n", [?MODULE, FlushInterval]),
+
+  % Start the metrics event manager
+  gen_event:start_link({local, estatsd_manager}),
+
+  % Register all specified adapters
+  lists:foreach(
+    fun(InitArgs) ->
+      gen_event:add_handler(estatsd_manager, estatsd_handler, InitArgs),
+      error_logger:info_msg("[~s] Added handler: '~w'~n", [?MODULE, InitArgs])
+    end,
+    Adapters
+  ),
 
   % Initialize the table for counter metrics
   ets:new(statsd, [named_table, set]),
@@ -122,7 +135,7 @@ handle_cast(flush, State) ->
 
 %% @doc Publishes the metrics using the estats_pub event manager
 publish_metrics_(Metrics) ->
-  gen_event:notify(estatsd_adapter, {publish, Metrics}).
+  gen_event:notify(estatsd_manager, {publish, Metrics}).
 
 
 %% @doc gen_server callback, logs and drops.
