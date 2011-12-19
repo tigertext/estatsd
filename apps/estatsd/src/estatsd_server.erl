@@ -35,6 +35,7 @@
 
 %% @doc Starts estatsd.
 start_link() ->
+  gen_event:start_link({local, estatsd_adapter}),
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
