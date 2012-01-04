@@ -54,7 +54,7 @@ init(_InitArgs) ->
   lists:foreach(
     fun(InitArgs) ->
       gen_event:add_handler(estatsd_manager, estatsd_handler, InitArgs),
-      error_logger:info_msg("[~s] Added handler: '~w'~n", [?MODULE, InitArgs])
+      error_logger:info_msg("[~s] Added handler: '~p'~n", [?MODULE, InitArgs])
     end,
     Adapters
   ),

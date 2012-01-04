@@ -14,12 +14,9 @@
 
 
 %% @doc estatsd_adapter callback, builds estatsd_graphite's initial state.
-init(_InitArgs) ->
-  % Read the Graphite remote host configuration from the environment
-  {ok, Host} = application:get_env(estatsd, graphite_host),
-  {ok, Port} = application:get_env(estatsd, graphite_port),
+init({Host, Port}) ->
   error_logger:info_msg(
-    "[~s] Going to send metrics to Graphite at: '~s:~s'~n",
+    "[~s] Going to send metrics to Graphite at: '~p:~p'~n",
     [?MODULE, Host, Port]),
 
   State = #state{host = Host, port = Port},
