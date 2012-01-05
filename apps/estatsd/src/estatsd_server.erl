@@ -53,8 +53,10 @@ init(_InitArgs) ->
   % Register all specified adapters
   lists:foreach(
     fun(InitArgs) ->
-      gen_event:add_handler(estatsd_manager, estatsd_handler, InitArgs),
-      error_logger:info_msg("[~s] Added handler: '~p'~n", [?MODULE, InitArgs])
+      {AdapterModule, _} = InitArgs,
+      error_logger:info_msg("[~s] Adding adapter: '~p'~n",
+        [?MODULE, AdapterModule]),
+      gen_event:add_handler(estatsd_manager, estatsd_handler, InitArgs)
     end,
     Adapters
   ),
