@@ -31,11 +31,7 @@ handle_metrics(Metrics, State) ->
 
 %% @doc estatsd_adapter callback, Sends the recorded metrics to Graphite.
 sync_handle_metrics(Metrics, State) ->
-  case render_(Metrics) of
-    % Don't actuelly send anything if there is nothing to report
-    undefined -> {ok, State, ok};
-    Message -> {ok, State, send_(Message, State)}
-  end.
+  {ok, State, send_(render_(Metrics), State)}.
 
 
 %% @doc Renders recorded metrics into a message readable by Graphite.
@@ -46,16 +42,8 @@ render_({Counters, Timers}) ->
   CounterMessage = render_counters_(Counters, Timestamp),
   TimersMessage = render_timers_(Timers, Timestamp),
 
-  case length(Counters) + length(TimersMessage) of
-    % Nothing to report!
-    0 -> undefined;
-    NumStats -> [
-      % Build the final message send to Graphite
-      CounterMessage, TimersMessage,
-      % Also graph the number of graphs we're graphing
-      "statsd.numStats ", estatsd:num2str(NumStats), " ", Timestamp, "\n"
-    ]
-  end.
+  % Build the final message send to Graphite
+  [CounterMessage, TimersMessage].
 
 
 %% @doc Sends an already rendered message to Graphite via TCP.
