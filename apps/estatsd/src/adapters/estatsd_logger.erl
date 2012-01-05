@@ -11,7 +11,7 @@
 
 
 %% @doc estatsd_adapter callback, initializes the metrics logger
-init(_InitArgs) -> nostate.
+init(_InitArgs) -> {ok, nostate}.
 
 
 %% @doc estatsd_adapter callback, asynchronously calls sync_handle_metrics.
@@ -22,5 +22,5 @@ handle_metrics(Metrics, State) ->
 
 %% @doc estatsd_adapter callback, simply logs the metrics.
 sync_handle_metrics(Metrics, State) ->
-  io:format("[~s] Metrics: ~p~n", [?MODULE, Metrics]),
+  error_logger:info_msg("[~s] Metrics: ~p~n", [?MODULE, Metrics]),
   {ok, State, noreply}.
