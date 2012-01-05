@@ -64,7 +64,7 @@ init(_InitArgs) ->
   % Initialize the table for counter metrics
   ets:new(statsd, [named_table, set]),
 
-  % Flush out stats to graphite periodically
+  % Flush out stats periodically
   {ok, TimerRef} = timer:apply_interval(
     FlushInterval, gen_server, cast, [?MODULE, flush]),
 
