@@ -19,7 +19,8 @@
   % systools uses this list to generate correct boot scripts.
   {applications, [
     kernel,
-    stdlib
+    stdlib,
+    ssl
   ]},
 
   % The application master starts the application by calling the application
