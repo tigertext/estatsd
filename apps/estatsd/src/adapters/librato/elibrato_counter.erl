@@ -7,7 +7,7 @@
   get_counter/2,
   get_counters/4,
   update_counter/4,
-  delete_counter/2,
+  delete_counter/2
 ]).
 
 
