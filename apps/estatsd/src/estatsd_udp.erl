@@ -122,10 +122,11 @@ handle_legacy_message(Bin) ->
 parse_line(<<>>) ->
     skip;
 parse_line(Bin) ->
+    % CHANGED!
     SplitVal = binary:split(Bin, [<<":">>, <<"|">>], [global]),
     % io:format("ORIG LINE: ~p~n", [Bin]),
     % io:format("SPLIT VALUE: ~p~n", [SplitVal]),
-    [Key, Value, Type, _SampleRate] = SplitVal,
+    [Key, Value, Type, <<"@", SampleRate/binary>>] = SplitVal,
     send_metric(Type, Key, Value).
 
 send_metric(Type, Key, Value) ->
@@ -140,9 +141,17 @@ send_estatsd_metric(Type, Key, Value)
 send_estatsd_metric(Type, Key, Value)
   when Type =:= <<"c">> orelse Type =:= <<"m">> ->
     estatsd:increment(Key, convert_value(Type, Value));
+
 send_estatsd_metric(_Type, _Key, _Value) ->
     % if it isn't one of the above types, we ignore the request.
     ignored.
+
+
+% CHANGED!
+send_estatsd_metric(Type, Key, Value, SampleRate)
+  when Type =:= <<"c">> orelse Type =:= <<"m">> ->
+    estatsd:increment(Key, convert_value(Type, Value),
+    erlang:list_to_float(binary_to_list(SampleRate))).
 
 % send_folsom_metric(blacklisted, _, _, _) ->
 %     skipped;
