@@ -122,7 +122,10 @@ handle_legacy_message(Bin) ->
 parse_line(<<>>) ->
     skip;
 parse_line(Bin) ->
-    [Key, Value, Type] = binary:split(Bin, [<<":">>, <<"|">>], [global]),
+    SplitVal = binary:split(Bin, [<<":">>, <<"|">>], [global]),
+    % io:format("ORIG LINE: ~p~n", [Bin]),
+    % io:format("SPLIT VALUE: ~p~n", [SplitVal]),
+    [Key, Value, Type, _SampleRate] = SplitVal,
     send_metric(Type, Key, Value).
 
 send_metric(Type, Key, Value) ->
