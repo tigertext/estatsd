@@ -127,7 +127,7 @@ parse_line(Bin) ->
     % io:format("ORIG LINE: ~p~n", [Bin]),
     % io:format("SPLIT VALUE: ~p~n", [SplitVal]),
     [Key, Value, Type, <<"@", SampleRate/binary>>] = SplitVal,
-    send_metric(Type, Key, Value).
+    send_estatsd_metric(Type, Key, Value, SampleRate).
 
 send_metric(Type, Key, Value) ->
     % FolsomKey = folsom_key_name(Type, Key),
@@ -138,6 +138,7 @@ send_metric(Type, Key, Value) ->
 send_estatsd_metric(Type, Key, Value)
   when Type =:= <<"ms">> orelse Type =:= <<"h">> ->
     estatsd:timing(Key, convert_value(Type, Value));
+
 send_estatsd_metric(Type, Key, Value)
   when Type =:= <<"c">> orelse Type =:= <<"m">> ->
     estatsd:increment(Key, convert_value(Type, Value));
