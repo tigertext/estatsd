@@ -1,21 +1,18 @@
-%%% Stats Aggregation Process.
-%%% Periodically dumps metrics to a graphing system of your choice.
-%%% Inspired by etsy statsd:
-%%% http://codeascraft.etsy.com/2011/02/15/measure-anything-measure-everything
-%%%
-%%% Richard Jones <rj@metabrew.com>
-%%% Johannes Huning <hi@johanneshuning.com>
-
+%% @author Richard Jones <rj@metabrew.com>
+%% @author Johannes Huning <hi@johanneshuning.com>
+%% @copyright 2011 Richard Jones
+%% @doc Stats aggregation process, periodically dumping metrics.
 -module (estatsd_server).
 
+%% This is an OTP gen_server.
 -behaviour (gen_server).
 
-% Client API
+%% Client API
 -export ([
   start_link/0
 ]).
 
-% Callback functions for gen_server
+%% OTP gen_server callbacks.
 -export ([
   init/1,
   handle_call/3,
@@ -25,41 +22,39 @@
   code_change/3
 ]).
 
-%% @doc estatsd process state.
+%% The state, consisting of settings and the timer metrics.
 -record (state, {
-  timers,          % Timer Metrics stored in a gb_tree
-  flush_interval,  % Interval between stats flushing, in ms
-  flush_timer      % Reference to the interval timer
+  timers,  % Timers stored in a gb_tree
+  flush_interval :: non_neg_integer(),  % Interval between flushing stats, in ms
+  flush_timer :: non_neg_integer() % Reference to the interval timer
 }).
 
 
-%% @doc Starts estatsd.
-start_link() ->
-  gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+% ====================== \/ CLIENT API =========================================
+
+%% @doc Starts the estatsd statistics server.
+%%      Registers a process named `estatsd_server`.
+-spec start_link() -> {ok, Pid::pid()} | {error, Reason::term()}.
+start_link() -> gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+% ====================== /\ CLIENT API =========================================
 
 
-%% @doc gen_server callback,
-init(_InitArgs) ->
-  % Retrieve the startup options
-  {ok, FlushInterval} = application:get_env(estatsd, flush_interval),
-  {ok, Adapters} = application:get_env(estatsd, adapters),
+% ====================== \/ GEN_SERVER CALLBACKS ===============================
 
-  error_logger:info_msg(
-    "[~s] Going to flush stats every ~wms~n", [?MODULE, FlushInterval]),
+%% @doc Initializes the server's state.
+%%      Registers a process named `estatsda_manager`.
+%%      Sets up an event manager and all configured adapters which will forward
+%%      to some graphing system or log, or whatever you want your adapter to do.
+init([]) ->
+  % Time between each flush, default to 10 seconds.
+  FlushInterval = estatsd:env_or_default(flush_interval, 10000),
+  error_logger:info_msg("[~s] Flushing every ~wms", [?MODULE, FlushInterval]),
 
-  % Start the metrics event manager
-  gen_event:start_link({local, estatsd_manager}),
-
-  % Register all specified adapters
-  lists:foreach(
-    fun(InitArgs) ->
-      {AdapterModule, _} = InitArgs,
-      error_logger:info_msg("[~s] Adding adapter: '~p'~n",
-        [?MODULE, AdapterModule]),
-      gen_event:add_handler(estatsd_manager, estatsd_handler, InitArgs)
-    end,
-    Adapters
-  ),
+  % Adapters to handle the collected metrics. Defaults to logging only.
+  DefaultAdapter = {estatsda_logger, []},
+  Adapters = estatsd:env_or_default(adapters, [DefaultAdapter]),
+  setup_adapters_(Adapters),
 
   % Initialize the table for counter metrics
   ets:new(statsd, [named_table, set]),
@@ -76,7 +71,7 @@ init(_InitArgs) ->
   {ok, State}.
 
 
-%% @doc gen_server callback, increments or creates the given counter.
+%% @doc Increments or creates the counter.
 handle_cast({increment, Key, IncrementBy, SampleRate}, State)
     % Only handle increments with proper sample rates
     when SampleRate >= 0 andalso SampleRate =< 1 ->
@@ -95,25 +90,21 @@ handle_cast({increment, Key, IncrementBy, SampleRate}, State)
   {noreply, State};
 
 
-%% @doc gen_server callback, logs 'n drops increments with invalid sample rates.
-handle_cast({increment, Key, _IncrementBy, SampleRate}, State) ->
-  error_logger:warning_msg(
-    "[~s] Requested to increment '~s' with invalid sample rate of: ~f~n",
-    [?MODULE, Key, SampleRate]),
-  {noreply, State};
+%% @doc Drops requests with invalid sample rates.
+handle_cast({increment, _, _, _}, State) -> {noreply, State};
 
 
-%% @doc gen_server callback, inserts or updates the timing for the given timer.
+%% @doc Inserts or updates the given timing.
 handle_cast({timing, Key, Duration}, State) ->
   Timers = State#state.timers,
   case gb_trees:lookup(Key, Timers) of
-    % Initialize new timers
+    % Initialize a new timer
     none ->
       {noreply, State#state{
         timers = gb_trees:insert(Key, [Duration], Timers)
       }};
 
-    % Otherwise just append the measured duration
+    % Otherwise just append the duration
     {value, Val} ->
       {noreply, State#state{
         timers = gb_trees:update(Key, [Duration|Val], Timers)
@@ -121,45 +112,72 @@ handle_cast({timing, Key, Duration}, State) ->
   end;
 
 
-%% @doc Flushes the current metrics to estats_pub.
+%% @doc Flushes the current set of metrics.
 handle_cast(flush, State) ->
-  % Publish the metrics in another process
+  % Retrieve the metrics from the state and the env
   Counters = ets:tab2list(statsd),
   Timers = gb_trees:to_list(State#state.timers),
-  spawn(fun() -> publish_metrics_(Counters, Timers) end ),
 
-  % Clear the metrics table and reset all timing counters
+  % Handle the flush in another process
+  spawn(fun() -> flush_metrics_(Counters, Timers) end),
+
+  % Continue with a blank slate
   ets:delete_all_objects(statsd),
   NewState = State#state{timers = gb_trees:empty()},
-  % Continue with a blank slate
   {noreply, NewState}.
 
 
-%% @doc Publishes the metrics using the estatsd_manager event manager
-publish_metrics_(Counters, Timers) ->
-  case length(Counters) + length(Timers) of
-    0 -> emptyset;  % Only send an event if there are any metrics at all
-    _ -> gen_event:notify(estatsd_manager, {publish, {Counters, Timers}})
-  end.
-
-
-%% @doc gen_server callback, logs and drops.
+%% @doc Logs and drops all calls.
 handle_call(Request, From, State) ->
   error_logger:warning_msg(
-    "[~s] Ignored call '~p' from '~w'~n", [?MODULE, Request, From]),
+    "[~s] Ignored call '~p' from '~p'~n", [?MODULE, Request, From]),
   {reply, ok, State}.
 
 
-%% @doc gen_server callback, logs and drops.
+%% @doc Logs and drops all info messages.
 handle_info(Info, State) ->
-  error_logger:info_msg(
-    "[~s] Ignored info '~p'~n", [?MODULE, Info]),
+  error_logger:info_msg("[~s] Ignored info '~p'~n", [?MODULE, Info]),
   {noreply, State}.
 
 
-%% @doc gen_server callback, continues with the old state.
+%% @doc Returns the old state.
 code_change(_OldVsn, State, _Extra) -> {noreply, State}.
 
 
-%% @doc gen_server callback, just returns ok.
+%% @doc Does nothing.
 terminate(_Arg, _State) -> ok.
+
+% ====================== /\ GEN_SERVER CALLBACKS ===============================
+
+
+% ====================== \/ HELPERS ============================================
+
+%% @doc Flushes the given metrics to registered adapters.
+flush_metrics_(Counters, Timers) ->
+  case length(Counters) + length(Timers) of
+    0 -> emptyset;  % Do nothing if no metrics were collected
+    _ -> gen_event:notify(estatsda_manager, {handle, {Counters, Timers}})
+  end.
+
+
+%% @doc Setup the metrics manager and its handlers, aka adapters.
+-spec setup_adapters_([{Module::atom(), InitArgs::term()}]) -> no_return().
+setup_adapters_(Adapters) ->
+  % Start the metrics event manager
+  gen_event:start_link({local, estatsda_manager}),
+
+  % Register the specified adapters with the manager
+  lists:foreach(
+    fun(AdapterSpec) ->
+      {AdapterModule, _} = AdapterSpec,
+      % Every adapter implements the estatsda_handler behaviour and is also
+      % invoked through an instance of estatsda_handler, which implements the
+      % generic parts of each adapter.
+      gen_event:add_handler(estatsda_manager, estatsda_adapter, AdapterSpec),
+      error_logger:info_msg("[~s] Added adapter: '~p'~n",
+        [?MODULE, AdapterModule])
+    end,
+    Adapters
+  ).
+
+% ====================== /\ HELPERS ============================================

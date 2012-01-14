@@ -1,29 +1,33 @@
--module (estatsd_graphite).
+%% @author Richard Jones <rj@metabrew.com>
+%% @author Johannes Huning <hi@johanneshuning.com>
+%% @copyright 2011 Richard Jones
+%% @doc Sends received metrics to Graphite.
+-module (estatsda_graphite).
 
--behaviour (estatsd_adapter).
+%% This is an estatsd adapter.
+-behaviour (estatsda_adapter).
 
-% estatsd_adapter behaviour callbacks
+% Adapter callbacks.
 -export ([
   init/1,
   handle_metrics/2,
   sync_handle_metrics/2
 ]).
 
-%% @doc estatsd_graphite process state, just hostname and port number.
--record (state, {host, port}).
+%% @doc Process state: Graphite instance's hostname and port.
+-record (state, {
+  host :: string(),
+  port :: non_neg_integer()
+}).
 
 
-%% @doc estatsd_adapter callback, builds estatsd_graphite's initial state.
-init({Host, Port}) ->
-  error_logger:info_msg(
-    "[~s] Going to send metrics to Graphite at: '~p:~p'~n",
-    [?MODULE, Host, Port]),
+% ====================== \/ ESTATSD_ADAPTER CALLBACKS ==========================
 
-  State = #state{host = Host, port = Port},
-  {ok, State}.
+%% @doc Builds the initial state.
+init({Host, Port}) -> {ok, #state{host = Host, port = Port}}.
 
 
-%% @doc estatsd_adapter callback, Sends the recorded metrics to Graphite.
+%% @doc Asynchronously sends the metrics to Graphite.
 handle_metrics(Metrics, State) ->
   spawn(fun() -> sync_handle_metrics(Metrics, State) end),
   {ok, State}.
@@ -33,23 +37,23 @@ handle_metrics(Metrics, State) ->
 sync_handle_metrics(Metrics, State) ->
   {ok, State, send_(render_(Metrics), State)}.
 
+% ====================== /\ ESTATSD_ADAPTER CALLBACKS ==========================
+
+
+% ====================== \/ HELPER FUNCTIONS ===================================
 
 %% @doc Renders recorded metrics into a message readable by Graphite.
 render_({Counters, Timers}) ->
   % One timestamp used in all stats lines
   Timestamp = estatsd:num2str(estatsd:unixtime()),
-
   CounterMessage = render_counters_(Counters, Timestamp),
   TimersMessage = render_timers_(Timers, Timestamp),
-
-  % Build the final message send to Graphite
+  % Final message send to Graphite
   [CounterMessage, TimersMessage].
 
 
-%% @doc Sends an already rendered message to Graphite via TCP.
+%% @doc Sends the rendered message to Graphite.
 send_(Message, #state{host = Host, port = Port}) ->
-  error_logger:info_msg("[~s] Sending data to Graphite ...~n", [?MODULE]),
-
   case gen_tcp:connect(Host, Port, [list, {packet, 0}]) of
     {ok, Socket} ->
       gen_tcp:send(Socket, Message),
@@ -57,7 +61,7 @@ send_(Message, #state{host = Host, port = Port}) ->
       ok;
     Error ->
       error_logger:error_msg(
-        "[~s] Failed to connect to Graphite: ~p", [?MODULE, Error]),
+        "[~s] Failed to connect to Graphite: '~p'~n", [?MODULE, Error]),
       Error
   end.
 
@@ -124,3 +128,5 @@ render_timers_(Timers, Timestamp) ->
       [Fragment | Acc]
   end,
   [], Timers).
+
+% ====================== /\ HELPER FUNCTIONS ===================================

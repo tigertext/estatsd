@@ -8,18 +8,14 @@
 
   % All names of registered processes in the application. systools uses this
   % list to detect name clashes between applications.
-  {registered, [
-    estatsd_sup,
-    estatsd_udp,
-    estatsd_server,
-    estatsd_pub
-  ]},
+  {registered, []},
 
   % All applications which must be started before this application is started.
   % systools uses this list to generate correct boot scripts.
   {applications, [
     kernel,
     stdlib,
+    sasl,
     ssl
   ]},
 

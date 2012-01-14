@@ -1,3 +1,6 @@
+%% @author Richard Jones <rj@metabrew.com>
+%% @copyright 2011 Richard Jones
+%% @doc TODO
 -module (estatsd_shp).
 
 -export ([parse_packet/1]).

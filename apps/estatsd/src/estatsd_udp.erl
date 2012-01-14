@@ -1,5 +1,10 @@
+%% @author Richard Jones <rj@metabrew.com>
+%% @copyright 2011 Richard Jones
+%% @doc TODO
 -module (estatsd_udp).
+
 -behaviour (gen_server).
+
 -define (SERVER, ?MODULE).
 
 -define (to_int(Value), list_to_integer(binary_to_list(Value))).
