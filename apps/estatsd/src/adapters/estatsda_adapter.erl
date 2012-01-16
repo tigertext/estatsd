@@ -74,7 +74,7 @@ init({Adapter, InitArgs}) ->
 
 %% @doc Forwards metrics to the backing adapter.
 %%      It's in the clients duty to handle the request asynchronously.
-handle_event({publish, Metrics}, State) ->
+handle_event({metrics, Metrics}, State) ->
   Adapter = State#state.adapter,
   AState = State#state.adapter_state,
 
@@ -84,12 +84,12 @@ handle_event({publish, Metrics}, State) ->
 
 %% @doc Logs and drops unexpected events.
 handle_event(Event, State) ->
-  error_logger:warning_msg("[~s] Ignored event: '~p'~n", [?MODULE, Event]),
+  error_logger:warning_msg("[~s] Ignored event: '~p'", [?MODULE, Event]),
   {ok, State}.
 
 
 %% @doc Forwards metrics to the backing adapter.
-handle_call({publish, Metrics}, State) ->
+handle_call({metrics, Metrics}, State) ->
   Adapter = State#state.adapter,
   AState = State#state.adapter_state,
 
@@ -99,13 +99,13 @@ handle_call({publish, Metrics}, State) ->
 
 %% @doc Logs and drops unexpected calls.
 handle_call(Request, State) ->
-  error_logger:warning_msg("[~s] Ignored call: '~p'~n", [?MODULE, Request]),
+  error_logger:warning_msg("[~s] Ignored call: '~p'", [?MODULE, Request]),
   {ok, undefined, State}.
 
 
 %% @doc Logs and drops unexpected infos.
 handle_info(Info, State) ->
-  error_logger:warning_msg("[~s] Ignored info: '~p'~n", [?MODULE, Info]),
+  error_logger:warning_msg("[~s] Ignored info: '~p'", [?MODULE, Info]),
   {ok, State}.
 
 

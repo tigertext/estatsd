@@ -4,6 +4,9 @@
 %% @doc The EStatsD module including a a client API and helper functions.
 -module (estatsd).
 
+% Include global type definitions.
+-include ("estatsd.hrl").
+
 %% Application control.
 -export ([
   start/0,
@@ -36,7 +39,7 @@
 %%      returns the default otherwise.
 -spec env_or_default(Key::atom(), Default::term()) -> term().
 env_or_default(Key, Default) ->
-  case application:get_env(ogrex, Key) of
+  case application:get_env(estatsd, Key) of
     {ok, Value} -> Value;
     _ -> Default
   end.
@@ -92,9 +95,9 @@ stop() -> application:stop(estatsd).
 -define (SERVER, estatsd_server).
 
 %% @doc Measure timing information given in ms.
+-spec timing(key(), duration()) -> ok.
 timing(Key, Duration) when is_integer(Duration) ->
   gen_server:cast(?SERVER, {timing, Key, Duration});
-
 
 %% @doc Measure timing information.
 timing(Key, Duration) ->
@@ -102,23 +105,33 @@ timing(Key, Duration) ->
 
 
 %% @doc Alias for increment(Key, 1, 1).
+-spec increment(key()) -> ok.
 increment(Key) -> increment(Key, 1, 1).
 
+
 %% @doc Alias for increment(Key, Amount, 1).
+-spec increment(key(), Amount::non_neg_integer()) -> ok.
 increment(Key, Amount) -> increment(Key, Amount, 1).
 
+
 %% @doc Increments the named counter.
-increment(Key, Amount, Sample) ->
-  gen_server:cast(?SERVER, {increment, Key, Amount, Sample}).
+-spec increment(key(), Amount::non_neg_integer(), SampleRate::float()) -> ok.
+increment(Key, Amount, SampleRate) ->
+  gen_server:cast(?SERVER, {increment, Key, Amount, SampleRate}).
 
 
 %% @doc Alias for decrement(Key, -1, 1).
+-spec decrement(key()) -> ok.
 decrement(Key) -> decrement(Key, -1, 1).
 
+
 %% @doc Alias for decrement(Key, Amount, 1).
+-spec decrement(key(), Amount::non_neg_integer()) -> ok.
 decrement(Key, Amount) -> decrement(Key, Amount, 1).
 
+
 %% @doc Decrements the named counter.
-decrement(Key, Amount, Sample) -> increment(Key, 0 - Amount, Sample).
+-spec decrement(key(), Amount::non_neg_integer(), SampleRate::float()) -> ok.
+decrement(Key, Amount, SampleRate) -> increment(Key, 0 - Amount, SampleRate).
 
 % ====================== /\ METRICS CLIENT API  ================================

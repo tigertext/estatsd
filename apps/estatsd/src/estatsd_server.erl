@@ -7,7 +7,7 @@
 %% This is an OTP gen_server.
 -behaviour (gen_server).
 
-%% Client API
+%% Client API.
 -export ([
   start_link/0
 ]).
@@ -22,7 +22,7 @@
   code_change/3
 ]).
 
-%% The state, consisting of settings and the timer metrics.
+%% Process state: Settings and the timer metrics.
 -record (state, {
   timers,  % Timers stored in a gb_tree
   flush_interval :: non_neg_integer(),  % Interval between flushing stats, in ms
@@ -49,7 +49,6 @@ start_link() -> gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 init([]) ->
   % Time between each flush, default to 10 seconds.
   FlushInterval = estatsd:env_or_default(flush_interval, 10000),
-  error_logger:info_msg("[~s] Flushing every ~wms", [?MODULE, FlushInterval]),
 
   % Adapters to handle the collected metrics. Defaults to logging only.
   DefaultAdapter = {estatsda_logger, []},
@@ -156,7 +155,7 @@ terminate(_Arg, _State) -> ok.
 flush_metrics_(Counters, Timers) ->
   case length(Counters) + length(Timers) of
     0 -> emptyset;  % Do nothing if no metrics were collected
-    _ -> gen_event:notify(estatsda_manager, {handle, {Counters, Timers}})
+    _ -> gen_event:notify(estatsda_manager, {metrics, {Counters, Timers}})
   end.
 
 
@@ -169,13 +168,10 @@ setup_adapters_(Adapters) ->
   % Register the specified adapters with the manager
   lists:foreach(
     fun(AdapterSpec) ->
-      {AdapterModule, _} = AdapterSpec,
       % Every adapter implements the estatsda_handler behaviour and is also
       % invoked through an instance of estatsda_handler, which implements the
       % generic parts of each adapter.
-      gen_event:add_handler(estatsda_manager, estatsda_adapter, AdapterSpec),
-      error_logger:info_msg("[~s] Added adapter: '~p'~n",
-        [?MODULE, AdapterModule])
+      gen_event:add_handler(estatsda_manager, estatsda_adapter, AdapterSpec)
     end,
     Adapters
   ).

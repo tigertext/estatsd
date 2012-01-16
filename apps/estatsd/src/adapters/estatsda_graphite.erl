@@ -60,8 +60,7 @@ send_(Message, #state{host = Host, port = Port}) ->
       gen_tcp:close(Socket),
       ok;
     Error ->
-      error_logger:error_msg(
-        "[~s] Failed to connect to Graphite: '~p'~n", [?MODULE, Error]),
+      error_logger:error_msg("[~s] Delivery failed: '~p'", [?MODULE, Error]),
       Error
   end.
 

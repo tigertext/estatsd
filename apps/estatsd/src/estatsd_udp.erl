@@ -1,188 +1,177 @@
 %% @author Richard Jones <rj@metabrew.com>
+%% @author Johannes Huning <hi@johanneshuning.com>
 %% @copyright 2011 Richard Jones
 %% @doc TODO
 -module (estatsd_udp).
 
--behaviour (gen_server).
-
--define (SERVER, ?MODULE).
-
--define (to_int(Value), list_to_integer(binary_to_list(Value))).
-
+% Include global type definitions.
 -include ("estatsd.hrl").
 
-%% ------------------------------------------------------------------
-%% API Function Exports
-%% ------------------------------------------------------------------
+%% This is an OTP gen_server.
+-behaviour (gen_server).
 
+%% Client API.
 -export ([start_link/0]).
 
-%% ------------------------------------------------------------------
-%% gen_server Function Exports
-%% ------------------------------------------------------------------
+%% OTP gen_server callbacks.
+-export ([
+  init/1,
+  handle_call/3,
+  handle_cast/2,
+  handle_info/2,
+  terminate/2,
+  code_change/3
+]).
 
--export ([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-         code_change/3]).
+%% @doc The server's state:
+-record (state, {
+  socket :: inet:socket(),
+  batch = [] :: [binary()],
+  max_batch_size :: non_neg_integer(),
+  max_batch_age :: non_neg_integer()
+}).
 
-%% ------------------------------------------------------------------
-%% API Function Definitions
-%% ------------------------------------------------------------------
+% ====================== \/ CLIENT API =========================================
 
-start_link() ->
-    gen_server:start_link(?MODULE, [], []).
+%% @doc Starts the estatsd UDP server.
+%%      Registers a process named `estatsd_udp`.
+-spec start_link() -> {ok, Pid::pid()} | {error, Reason::term()}.
+start_link() -> gen_server:start_link(?MODULE, [], []).
 
-%% ------------------------------------------------------------------
-%% gen_server Function Definitions
-%% ------------------------------------------------------------------
--record (state, {port          :: non_neg_integer(),
-                socket        :: inet:socket(),
-                batch = []    :: [binary()],
-                batch_max     :: non_neg_integer(),
-                batch_max_age :: non_neg_integer()
-               }).
+% ====================== /\ CLIENT API =========================================
 
+
+% ====================== \/ GEN_SERVER CALLBACKS ===============================
+
+%% @doc Initializes the server's state.
+%%      Opens up an UDP socket on the configured port.
 init([]) ->
-    {ok, Port} = application:get_env(estatsd, udp_listen_port),
-    {ok, RecBuf} = application:get_env(estatsd, udp_recbuf),
-    {ok, BatchMax} = application:get_env(estatsd, udp_max_batch_size),
-    {ok, BatchAge} = application:get_env(estatsd, udp_max_batch_age),
-    error_logger:info_msg("estatsd will listen on UDP ~p with recbuf ~p~n",
-                          [Port, RecBuf]),
-    error_logger:info_msg("batch size ~p with max age of ~pms~n",
-                          [BatchMax, BatchAge]),
-    {ok, Socket} = gen_udp:open(Port, [binary, {active, once},
-                                       {recbuf, RecBuf}]),
-    {ok, #state{port = Port, socket = Socket,
-                batch = [],
-                batch_max = BatchMax,
-                batch_max_age = BatchAge}}.
+  % Read the batch settings
+  MaxBatchSize = estatsd:env_or_default(max_batch_size, 100),
+  MaxBatchAge = estatsd:env_or_default(max_batch_age, 2000),
 
-handle_call(_Request, _From, State) ->
-    {noreply, ok, State}.
+  Port = estatsd:env_or_default(port, 3344),
+  ServerOpts = estatsd:env_or_default(server_opts, []) ++
+    [binary, {active, once}],
+  % Open the socket
+  {ok, Socket} = gen_udp:open(Port, ServerOpts),
 
-handle_cast(_Msg, State) ->
-    {noreply, State}.
+  {ok, #state{
+    socket = Socket,
+    batch = [],
+    max_batch_size = MaxBatchSize,
+    max_batch_age = MaxBatchAge
+  }}.
 
 
+%% @doc Logs and drops unexpected calls.
+handle_call(Request, From, State) ->
+  error_logger:warning_msg(
+    "[~s] Ignored call '~p' from '~p'", [?MODULE, Request, From]),
+  {noreply, ok, State}.
+
+
+%% @doc Logs and drops unexpected casts.
+handle_cast(Message, State) ->
+  error_logger:warning_msg("[~s] Ignored cast '~p'", [?MODULE, Message]),
+  {noreply, State}.
+
+
+%% @doc Closes the current batch, submitting it to be parsed.
+%%      Makes the received binary the first element in the new batch.
 handle_info({udp, Socket, _Host, _Port, Bin},
-            #state{batch=Batch, batch_max=Max}=State) when length(Batch) == Max ->
-    error_logger:info_msg("spawn batch ~p FULL~n", [Max]),
-    start_batch_worker(Batch),
-    inet:setopts(Socket, [{active, once}]),
-    {noreply, State#state{batch=[Bin]}};
-handle_info({udp, Socket, _Host, _Port, Bin}, #state{batch=Batch,
-                                                     batch_max_age=MaxAge}=State) ->
-    inet:setopts(Socket, [{active, once}]),
-    {noreply, State#state{batch=[Bin|Batch]}, MaxAge};
-handle_info(timeout, #state{batch=Batch}=State) ->
-    error_logger:info_msg("spawn batch ~p TIMEOUT~n", [length(Batch)]),
-    start_batch_worker(Batch),
-    {noreply, State#state{batch=[]}};
-handle_info(_Msg, State) ->
-    {noreply, State}.
+    #state{batch = Batch, max_batch_size = MaxBatchSize} = State)
+    when length(Batch) == MaxBatchSize ->
 
-terminate(_Reason, _State) ->
-    ok.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-%% ------------------------------------------------------------------
-%% Internal Function Definitions
-%% ------------------------------------------------------------------
-start_batch_worker(Batch) ->
-    %% Make sure we process messages in the order received
-    proc_lib:spawn(fun() -> handle_messages(lists:reverse(Batch)) end).
-
-handle_messages(Batch) ->
-    [ handle_message(M) || M <- Batch ],
-    ok.
-
-is_legacy_message(<<"1|", _Rest/binary>>) ->
-    false;
-is_legacy_message(_Bin) ->
-    true.
-
-handle_message(Bin) ->
-    case is_legacy_message(Bin) of
-        true -> handle_legacy_message(Bin);
-        false -> handle_shp_message(Bin)
-    end.
-
-handle_shp_message(Bin) ->
-    [ send_metric(erlang:atom_to_binary(Type, utf8), Key, Value)
-      || #shp_metric{key = Key, value = Value,
-                     type = Type} <- estatsd_shp:parse_packet(Bin) ].
-
-handle_legacy_message(Bin) ->
-    try
-        Lines = binary:split(Bin, <<"\n">>, [global]),
-        [ parse_line(L) || L <- Lines ]
-    catch
-        error:Why ->
-            error_logger:error_report({error, "handle_message failed",
-                                       Bin, Why, erlang:get_stacktrace()})
-    end.
-
-parse_line(<<>>) ->
-    skip;
-parse_line(Bin) ->
-    % CHANGED!
-    SplitVal = binary:split(Bin, [<<":">>, <<"|">>], [global]),
-    % io:format("ORIG LINE: ~p~n", [Bin]),
-    % io:format("SPLIT VALUE: ~p~n", [SplitVal]),
-    [Key, Value, Type, <<"@", SampleRate/binary>>] = SplitVal,
-    send_estatsd_metric(Type, Key, Value, SampleRate).
-
-send_metric(Type, Key, Value) ->
-    % FolsomKey = folsom_key_name(Type, Key),
-    % {ok, Status} = estatsd_folsom:ensure_metric(FolsomKey, Type),
-    % send_folsom_metric(Status, Type, FolsomKey, Value),
-    send_estatsd_metric(Type, Key, Value).
-
-send_estatsd_metric(Type, Key, Value)
-  when Type =:= <<"ms">> orelse Type =:= <<"h">> ->
-    estatsd:timing(Key, convert_value(Type, Value));
-
-send_estatsd_metric(Type, Key, Value)
-  when Type =:= <<"c">> orelse Type =:= <<"m">> ->
-    estatsd:increment(Key, convert_value(Type, Value));
-
-send_estatsd_metric(_Type, _Key, _Value) ->
-    % if it isn't one of the above types, we ignore the request.
-    ignored.
+  handle_batch_(Batch),
+  inet:setopts(Socket, [{active, once}]),
+  {noreply, State#state{batch = [Bin]}};
 
 
-% CHANGED!
-send_estatsd_metric(Type, Key, Value, SampleRate)
-  when Type =:= <<"c">> orelse Type =:= <<"m">> ->
-    estatsd:increment(Key, convert_value(Type, Value),
-    erlang:list_to_float(binary_to_list(SampleRate))).
+%% @doc Appends the received binary to the current batch.
+handle_info({udp, Socket, _Host, _Port, Bin},
+    #state{batch = Batch, max_batch_age = MaxAge} = State) ->
 
-% send_folsom_metric(blacklisted, _, _, _) ->
-%     skipped;
-% send_folsom_metric({ok, _}, Type, Key, Value)
-%   when Type =:= <<"c">> orelse Type =:= <<"m">> ->
-%     % TODO: avoid event handler, go direct to folsom
-%     folsom_metrics_meter:mark(Key, convert_value(Type, Value));
-% send_folsom_metric({ok, _}, Type, Key, Value)
-%   when Type =:= <<"ms">> orelse Type =:= <<"h">> ->
-%     folsom_metrics_histogram:update(Key, convert_value(Type, Value));
-% send_folsom_metric({ok, _}, Type = <<"mr">>, Key, Value) ->
-%     folsom_metrics_meter_reader:mark(Key, convert_value(Type, Value));
-% send_folsom_metric({ok, _}, Type, Key, Value) ->
-%     folsom_metrics:notify({Key, convert_value(Type, Value)}).
+  inet:setopts(Socket, [{active, once}]),
+  {noreply, State#state{batch = [Bin | Batch]}, MaxAge};
 
-convert_value(<<"e">>, Value) ->
-    Value;
-convert_value(_Type, Value) when is_binary(Value) ->
-    ?to_int(Value);
-convert_value(_Type, Value) when is_integer(Value) ->
-    Value.
 
-% folsom_key_name(Type, Key) when Type =:= <<"m">> orelse Type =:= <<"c">> ->
-%     iolist_to_binary([<<"stats.">>, Key]);
-% folsom_key_name(Type, Key) when Type =:= <<"h">> orelse Type =:= <<"ms">> ->
-%     iolist_to_binary([<<"stats.timers.">>, Key]);
-% folsom_key_name(_Type, Key) ->
-%     Key.
+%% @doc Timeouts the current batch, submitting it to be parsed.
+handle_info(timeout, #state{batch = Batch} = State) ->
+  handle_batch_(Batch),
+  % Continue with a new batch.
+  {noreply, State#state{batch=[]}};
+
+
+%% @doc Logs and drops unexpected info messages.
+handle_info(Info, State) ->
+  error_logger:info_msg("[~s] Ignored info '~p'~n", [?MODULE, Info]),
+  {noreply, State}.
+
+
+%% @doc Does nothing.
+terminate(_Reason, _State) -> ok.
+
+
+%% @doc Returns the old state.
+code_change(_OldVsn, State, _Extra) -> {ok, State}.
+
+% ====================== /\ GEN_SERVER CALLBACKS ===============================
+
+
+% ====================== \/ HELPER FUNCTIONS ===================================
+
+%% @doc Handles the batch's messages in a new process.
+-spec handle_batch_([binary()]) -> no_return().
+handle_batch_(Batch) ->
+  %% Make sure we process messages in the order received
+  spawn(fun() ->
+    [handle_message_(Message) || Message <- lists:reverse(Batch)]
+  end).
+
+
+%% @doc Splits the given message, then calls handle_line_ for every line found.
+-spec handle_message_(Message::binary()) -> no_return().
+handle_message_(Message) -> try
+  [handle_line_(Line) || Line <- binary:split(Message, <<"\n">>, [global])]
+catch
+  error:Reason -> error_logger:error_report(
+    {error, "handle_message_ failed",
+      Message, Reason, erlang:get_stacktrace()})
+end.
+
+
+%% @doc Parses the given line and sends the included metrics to the server.
+-spec handle_line_(Line::binary()) -> no_return().
+handle_line_(Line) ->
+  Tokens = binary:split(Line, [<<":">>, <<"|">>], [global]),
+  case length(Tokens) of
+    4 -> [Key, Value, Type, <<"@", SampleRate/binary>>] = Tokens;
+    % In case no sample rate was set, default to 1.
+    3 -> [Key, Value, Type, SampleRate] = Tokens ++ [<<"1.0">>]
+  end,
+  send_estatsd_metric_(Type, Key, Value, SampleRate).
+
+
+%% @doc Sends the timing information to the server.
+send_estatsd_metric_(<<"ms">>, Key, Value, _SampleRate) ->
+  estatsd:timing(Key, convert_value_(Value));
+
+%% @doc Sends the counter information to the server.
+send_estatsd_metric_(<<"c">>, Key, Value, SampleRate) ->
+  estatsd:increment(Key, convert_value_(Value),
+    list_to_float(binary_to_list(SampleRate)));
+
+%% @doc Ignores any non-matching metrics.
+send_estatsd_metric_(_, _, _, _) -> ignored.
+
+
+%% @doc Formats the given binary into an integer.
+-define (to_int(Value), list_to_integer(binary_to_list(Value))).
+
+%% @doc Converts the given value to its integer representation.
+-spec convert_value_(Value :: binary() | integer()) -> integer().
+convert_value_(Value) when is_binary(Value) -> ?to_int(Value);
+convert_value_(Value) when is_integer(Value) -> Value.
+
+% ====================== /\ HELPER FUNCTIONS ===================================

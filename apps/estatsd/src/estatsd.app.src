@@ -16,7 +16,8 @@
     kernel,
     stdlib,
     sasl,
-    ssl
+    ssl,
+    ibrowse
   ]},
 
   % The application master starts the application by calling the application

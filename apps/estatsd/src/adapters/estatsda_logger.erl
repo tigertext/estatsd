@@ -28,7 +28,7 @@ handle_metrics(Metrics, State) ->
 
 %% @doc Logs the metrics.
 sync_handle_metrics(Metrics, State) ->
-  error_logger:info_msg("[~s] Metrics: ~p~n", [?MODULE, Metrics]),
+  error_logger:info_msg("[~s] Metrics:~n~p~n", [?MODULE, Metrics]),
   {ok, State, noreply}.
 
 % ====================== /\ ESTATSD_ADAPTER CALLBACKS ==========================

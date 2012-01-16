@@ -1,7 +1,7 @@
 %% @author Richard Jones <rj@metabrew.com>
 %% @author Johannes Huning <hi@johanneshuning.com>
 %% @copyright 2011 Richard Jones
-%% @doc Global type and record definitions.
+%% @doc Global type definitions.
 
 %% A key is either an atom, a binary or a list/string.
 -type key() :: atom() | binary() | list().
@@ -21,15 +21,3 @@
 
 %% A set of metrics is tuple of counters and timers.
 -type metrics() :: {counters(), timers()}.
-
-
-% TODO: Document!
--type shp_metric_type() :: 'm' | 'mr' | 'g' | 'h'.
-
-% TODO: Document!
--record (shp_metric, {
-  key         :: binary(),
-  value       :: integer(),
-  type        :: shp_metric_type(),
-  sample_rate :: float() | undefined
-}).
