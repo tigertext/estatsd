@@ -53,7 +53,6 @@ render_({Counters, Timers}) ->
 
   % Encode the final message
   Msg = erlang:iolist_to_binary(mochijson2:encode(Term)),
-  io:format("~s~n", [Msg]),
   Msg.
 
 
