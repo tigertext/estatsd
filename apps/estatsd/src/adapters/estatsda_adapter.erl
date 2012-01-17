@@ -42,13 +42,14 @@
 % Whenever the metrics event manager receives an event sent using
 % gen_event:notify/2 or gen_event:sync_notify/2, this function is called for
 % the adapter to handle the metrics.
-% -callback handle_metrics(metrics(), State::term()) -> {ok, NewState::term()}.
+% -callback handle_metrics(prepared_metrics(), State::term()) ->
+%   {ok, NewState::term()}.
 
 
 %% Whenever the metrics event manager receives a request sent using
 %% gen_event:call/3,4, this function is called for the adapter to handle
 %% the metrics.
-% -callback sync_handle_metrics(metrics(), State::term()) ->
+% -callback sync_handle_metrics(prepared_metrics(), State::term()) ->
 %   {ok, NewState::term()}.
 
 
@@ -77,7 +78,6 @@ init({Adapter, InitArgs}) ->
 handle_event({metrics, Metrics}, State) ->
   Adapter = State#state.adapter,
   AState = State#state.adapter_state,
-
   {ok, NewAState} = Adapter:handle_metrics(Metrics, AState),
   {ok, State#state{adapter_state = NewAState}};
 
@@ -92,7 +92,6 @@ handle_event(Event, State) ->
 handle_call({metrics, Metrics}, State) ->
   Adapter = State#state.adapter,
   AState = State#state.adapter_state,
-
   {ok, NewAState, Reply} = Adapter:synchandle_metrics(Metrics, AState),
   {ok, Reply, State#state{adapter_state = NewAState}};
 

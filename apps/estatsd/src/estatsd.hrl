@@ -19,5 +19,23 @@
 -type timer() :: {key(), [duration()]}.
 -type timers() :: [timer()].
 
-%% A set of metrics is tuple of counters and timers.
+%% Raw metrics are tuples of counters and timers.
 -type metrics() :: {counters(), timers()}.
+
+
+%% @doc A prepared counter is an already converted binary key and
+%%      the computed value per second.
+-type prepared_counter() ::
+  {KeyAsBinary::binary(), ValuePerSec::float(),
+    NoIncrements::non_neg_integer()}.
+-type prepared_counters() :: [prepared_counter()].
+
+%% @doc A prepared timer is an already converted string key, the same list of
+%%      durations to support further computations and the calculated maximum,
+%%      minimum and the _sorted_ overall number of durations.
+-type prepared_timer() :: {KeyAsString::string(), [duration()],
+  Count::non_neg_integer(), Min::non_neg_integer(), Max::non_neg_integer()}.
+-type prepared_timers() :: [prepared_timer()].
+
+%% @doc Prepated metrics are tuples of prepared counters and timers.
+-type prepared_metrics() :: {prepared_counters(), prepared_timers()}.

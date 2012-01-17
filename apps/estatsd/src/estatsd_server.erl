@@ -4,6 +4,9 @@
 %% @doc Stats aggregation process, periodically dumping metrics.
 -module (estatsd_server).
 
+%% See estatsd.hrl for a complete list of introduced types.
+-include ("estatsd.hrl").
+
 %% This is an OTP gen_server.
 -behaviour (gen_server).
 
@@ -24,9 +27,7 @@
 
 %% Process state: Settings and the timer metrics.
 -record (state, {
-  timers,  % Timers stored in a gb_tree
-  flush_interval :: non_neg_integer(),  % Interval between flushing stats, in ms
-  flush_timer :: non_neg_integer() % Reference to the interval timer
+  timers % Timers stored in a gb_tree
 }).
 
 
@@ -59,14 +60,10 @@ init([]) ->
   ets:new(statsd, [named_table, set]),
 
   % Flush out stats periodically
-  {ok, TimerRef} = timer:apply_interval(
+  {ok, _} = timer:apply_interval(
     FlushInterval, gen_server, cast, [?MODULE, flush]),
 
-  State = #state{
-    timers         = gb_trees:empty(),
-    flush_interval = FlushInterval,
-    flush_timer    = TimerRef
-  },
+  State = #state{timers = gb_trees:empty()},
   {ok, State}.
 
 
@@ -149,13 +146,15 @@ terminate(_Arg, _State) -> ok.
 % ====================== /\ GEN_SERVER CALLBACKS ===============================
 
 
-% ====================== \/ HELPERS ============================================
+% ====================== \/ HELPER FUNCTIONS ===================================
 
 %% @doc Flushes the given metrics to registered adapters.
 flush_metrics_(Counters, Timers) ->
   case length(Counters) + length(Timers) of
     0 -> emptyset;  % Do nothing if no metrics were collected
-    _ -> gen_event:notify(estatsda_manager, {metrics, {Counters, Timers}})
+    _ ->
+      Metrics = precompile_metrics_({Counters, Timers}),
+      gen_event:notify(estatsda_manager, {metrics, Metrics})
   end.
 
 
@@ -176,4 +175,42 @@ setup_adapters_(Adapters) ->
     Adapters
   ).
 
-% ====================== /\ HELPERS ============================================
+
+%% @doc Prepares the given metrics to be handled by the adapters.
+-spec precompile_metrics_(metrics()) -> prepared_metrics().
+precompile_metrics_({Counters, Timers}) ->
+  {precompile_counters_(Counters), precompile_timers_(Timers)}.
+
+
+%% @doc Prepares the given counters to be handled by the adapters.
+-spec precompile_counters_(counters()) -> prepared_counters().
+precompile_counters_(Counters) ->
+  FlushInterval = estatsd:env_or_default(flush_interval, 10000),
+
+  lists:map(
+    fun({Key, {Value, NoIncrements}}) ->
+      KeyAsBinary = erlang:list_to_binary(estatsd:key2str(Key)),
+      ValuePerSec = Value / (FlushInterval / 1000),
+      {KeyAsBinary, ValuePerSec, NoIncrements}
+    end,
+    Counters).
+
+
+%% @doc Prepares the given timers to be handled by the adapters.
+-spec precompile_timers_(timers()) -> prepared_timers().
+precompile_timers_(Timers) ->
+  lists:map(
+    fun({Key, Durations}) ->
+      KeyAsBinary = erlang:list_to_binary(estatsd:key2str(Key)),
+      DurationsSorted = lists:sort(Durations),
+
+      Count = length(Durations),
+      Min = hd(Durations),
+      Max = lists:last(Durations),
+
+      {KeyAsBinary, DurationsSorted, Count, Min, Max}
+    end,
+    Timers).
+
+% ====================== /\ HELPER FUNCTIONS ===================================
+

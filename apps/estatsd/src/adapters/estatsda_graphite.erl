@@ -4,6 +4,9 @@
 %% @doc Sends received metrics to Graphite.
 -module (estatsda_graphite).
 
+%% See estatsd.hrl for a complete list of introduced types.
+-include ("../estatsd.hrl").
+
 %% This is an estatsd adapter.
 -behaviour (estatsda_adapter).
 
@@ -66,20 +69,18 @@ send_(Message, #state{host = Host, port = Port}) ->
 
 
 %% @doc Renders the counter metrics into a message readable by Graphite.
+-spec render_counters_(Counters::prepared_counters(),
+  Timestamp::non_neg_integer()) -> CountersStringFragment::string().
 render_counters_(Counters, Timestamp) ->
-  {ok, FlushInterval} = application:get_env(estatsd, flush_interval),
   lists:foldl(
-    fun({Key, {Value, Times}}, Acc) ->
-      KeyString = estatsd:key2str(Key),
-      ValuePerSec = Value / (FlushInterval / 1000),
-
+    fun({KeyAsBinary, ValuePerSec, NoIncrements}, Acc) ->
+      KeyAsString = estatsd:key2str(KeyAsBinary),
       % Build stats string fragment for Graphite
       Fragment = [
-        "stats.", KeyString, " ",
+        "stats.", KeyAsString, " ",
           estatsd:num2str(ValuePerSec), " ", Timestamp, "\n",
-
-        "stats_counts.", KeyString, " ",
-          estatsd:num2str(Times), " ", Timestamp, "\n"
+        "stats_counts.", KeyAsString, " ",
+          estatsd:num2str(NoIncrements), " ", Timestamp, "\n"
       ],
       % Fold step
       [Fragment | Acc]
@@ -88,15 +89,12 @@ render_counters_(Counters, Timestamp) ->
 
 
 %% @doc Renders the timer metrics into a message readable by Graphite.
+-spec render_timers_(Timers::prepared_timers(), Timestamp::non_neg_integer()) ->
+  TimersStringFragment::string().
 render_timers_(Timers, Timestamp) ->
   lists:foldl(
-    fun({Key, Durations_}, Acc) ->
-      KeyString = estatsd:key2str(Key),
-      Durations = lists:sort(Durations_),
-
-      Count = length(Durations),
-      Min = hd(Durations),
-      Max = lists:last(Durations),
+    fun({KeyAsBinary, Durations, Count, Min, Max}, Acc) ->
+      KeyAsString = estatsd:key2str(KeyAsBinary),
 
       UpperThreshold = 90, % In percent
       NumUpperValues  = erlang:round(((100 - UpperThreshold) / 100) * Count),
@@ -106,7 +104,7 @@ render_timers_(Timers, Timestamp) ->
       LowerMax = lists:nth(NumLowerValues, Durations),
       Mean = lists:sum(LowerDurations) / NumLowerValues,
 
-      Prefix = ["stats.timers.", KeyString, "."],
+      Prefix = ["stats.timers.", KeyAsString, "."],
       Postfix = [" ", Timestamp, "\n"],
 
       % Build stats string fragment for Graphite

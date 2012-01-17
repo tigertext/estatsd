@@ -3,6 +3,9 @@
 %% @doc Librato Metrics adapter, sends metrics to librato.
 -module (estatsda_librato).
 
+%% See estatsd.hrl for a complete list of introduced types.
+-include ("../estatsd.hrl").
+
 %% This is an estatsd adapter.
 -behaviour (estatsda_adapter).
 
@@ -47,34 +50,49 @@ sync_handle_metrics(Metrics, State) ->
 render_({Counters, Timers}) ->
   CountersMessage = render_counters_(Counters),
   TimersMessage = render_timers_(Timers),
-
   % Mochijson2 JSON struct
-  Term = {struct, [{gauges, CountersMessage}, {counters, TimersMessage}]},
-
+  Term = {struct, [{gauges, CountersMessage ++ TimersMessage}]},
   % Encode the final message
-  Msg = erlang:iolist_to_binary(mochijson2:encode(Term)),
-  Msg.
+  erlang:iolist_to_binary(mochijson2:encode(Term)).
 
 
 %% @doc Renders the counter metrics
+-spec render_counters_(prepared_counters()) -> JsonStruct::term().
 render_counters_(Counters) ->
-  {ok, FlushInterval} = application:get_env(estatsd, flush_interval),
   lists:map(
-    fun({Key, {Value, _NoIncrements}}) ->
-      KeyString = erlang:list_to_binary(estatsd:key2str(Key)),
-      ValuePerSec = Value / (FlushInterval / 1000),
-
+    fun({KeyAsBinary, ValuePerSec, _NoIncrements}) ->
       % Build Mochijson2 JSON fragment
-      {struct, [{name, KeyString}, {value, ValuePerSec}]}
+      {struct, [{name, KeyAsBinary}, {value, ValuePerSec}]}
     end,
     Counters).
 
 
 %% @doc Renders the timer metrics
-render_timers_(_Timers) -> "".  % TODO: Implement
+-spec render_timers_(prepared_timers()) -> JsonStruct::term().
+render_timers_(Timers) ->
+  lists:map(
+    fun({KeyAsBinary, Durations, Count, Min, Max}) ->
+      % Calculate the sum and the sum of all squares.
+      {Sum, SumSquares} = lists:foldl(fun(Duration, {SumAcc, SumSquaresAcc}) ->
+        {SumAcc + Duration, SumSquaresAcc + (Duration * Duration)}
+      end, {0, 0}, Durations),
+
+      % Build Mochijson2 JSON fragment
+      {struct, [
+        {name, KeyAsBinary},
+        {count, Count},
+        {sum, Sum},
+        {max, Max},
+        {min, Min},
+        {sum_squares, SumSquares}
+      ]}
+    end,
+    Timers).
 
 
-%% @doc
+%% @doc Sends the given metrics JSON to librato.
+-spec send_(Message::string(), State::#state{}) ->
+  {error, Reason::term()} | {ok, noreply}.
 send_(Message, #state{user = User, token = Token}) ->
   Url = "https://metrics-api.librato.com/v1/metrics.json",
 
