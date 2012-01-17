@@ -89,10 +89,11 @@ send_(Message, #state{user = User, token = Token}) ->
   ],
 
   case ibrowse:send_req(Url, Headers, post, Message, Options, 5000) of
-    Response -> io:format("~p", [Response]); % CHANGED.
     {error, Reason} ->
       error_logger:error_msg("[~s] Delivery failed: '~p'", [?MODULE, Reason]),
-      Reason
+      {error, Reason};
+
+    _ -> {ok, noreply}
   end.
 
 % ====================== /\ HELPER FUNCTIONS ===================================
