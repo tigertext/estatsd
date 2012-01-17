@@ -49,7 +49,7 @@ render_({Counters, Timers}) ->
   TimersMessage = render_timers_(Timers),
 
   % Mochijson2 JSON struct
-  Term = {struct, [{counters, CountersMessage}, {gauges, TimersMessage}]},
+  Term = {struct, [{gauges, CountersMessage}, {counters, TimersMessage}]},
 
   % Encode the final message
   Msg = erlang:iolist_to_binary(mochijson2:encode(Term)),
