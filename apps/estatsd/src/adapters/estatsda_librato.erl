@@ -61,8 +61,20 @@ render_({Counters, Timers}) ->
 render_counters_(Counters) ->
   lists:map(
     fun({KeyAsBinary, ValuePerSec, _NoIncrements}) ->
-      % Build Mochijson2 JSON fragment
-      {struct, [{name, KeyAsBinary}, {value, ValuePerSec}]}
+      case binary:split(KeyAsBinary, <<"-">>, [global]) of
+        % A counter adhering to the group convention;
+        % That is, minus ("-") separates group from actual key.
+        {Group, Source} -> {struct, [
+          {name, Group},
+          {source, Source},
+          {value, ValuePerSec}
+        ]};
+        % This is a common counter.
+        _ -> {struct, [
+          {name, KeyAsBinary},
+          {value, ValuePerSec}
+        ]}
+      end
     end,
     Counters).
 
