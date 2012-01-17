@@ -64,7 +64,7 @@ render_counters_(Counters) ->
       case binary:split(KeyAsBinary, <<"-">>, [global]) of
         % A counter adhering to the group convention;
         % That is, minus ("-") separates group from actual key.
-        {Group, Source} -> {struct, [
+        [Group, Source] -> {struct, [
           {name, Group},
           {source, Source},
           {value, ValuePerSec}
