@@ -47,8 +47,8 @@ start_link() -> gen_server:start_link(?MODULE, [], []).
 %%      Opens up an UDP socket on the configured port.
 init([]) ->
   % Read the batch settings
-  MaxBatchSize = estatsd:env_or_default(max_batch_size, 100),
-  MaxBatchAge = estatsd:env_or_default(max_batch_age, 2000),
+  MaxBatchSize = estatsd:env_or_default(max_batch_size, 50),
+  MaxBatchAge = estatsd:env_or_default(max_batch_age, 1000),
 
   Port = estatsd:env_or_default(port, 3344),
   ServerOpts = estatsd:env_or_default(server_opts, []) ++
