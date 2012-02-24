@@ -1,73 +1,87 @@
-# About
-
-`estatsd` is a simple stats aggregation service that periodically dumps data to
-a graphing system of your choice such as
-[Graphite](http://graphite.wikidot.com/)
-or [Librato Metrics](https://metrics.librato.com/).
-
-Inspired heavily by [Etsy's statsd](http://goo.gl/h3Ztp).
+estatsd
+=============
+Heavily modified fork of the [Opscode estatsd](https://github.com/opscode/estatsd), able to publish metrics to [Librato](https://metrics.librato.com).
 
 
-<!-- TODO: Rewrite!
-QUICK DEMO
-==========
+Adding estatsd as a dependency
+-----------------------------------------
+Even though **estatsd** come as a node you can add it, at least somehow, as a dependency:
 
-1) Install and configure graphite (quick-ish)
-2) Install rebar, have it in your path
-3) rebar compile
-4) erl -pa ebin
-5) > application:start(estatsd).
-   > estatsd:increment(foo, 123).
-6) Observe graphite now has 1 data point.
+1. Clone or submodule **estatsd** into your `priv/` directory or whatever have you
+2. Include it in `sub_dirs` in your `rebar.config`, e.g.:
 
-USAGE
-=====
+     ```erlang
+     {sub_dirs, [
+       "apps/my_app",
+       "priv/estatsd/apps/estatsd",
+       "rel"
+     ]}.
+     ```
 
-Add this app to your rebar deps, and make sure it's started somehow
-eg: application:start(estatsd).
+3. Add an `include_cond` to your reltool.config:
 
-You can configure custom graphite host/port and flush interval using 
-application environment vars. See estatsd_sup for details.
+     ```erlang
+     % ...
+     {app, my_app, [{incl_cond, include}]},
+     {app, estatsd, [{incl_cond, include}]}
+     % ...
+     ```
 
-The following calls to estatsd are all gen_server:cast, ie non-blocking.
+4. Make sure you have a `estatsd` section, like the one in `rel/files/app.config`, in your environment.
 
-Counters
---------
-
-    estatsd:increment(num_foos).            %% increment num_foos by one
-
-    estatsd:decrement(<<"num_bars">>, 3).   %% increment num_bars by 3
-
-    estatsd:increment("tcp.bytes_in", 512). %% increment tcp.bytes_in by 512
-
-Timers
-------
-
-    estatsd:timing(sometask, 1534).         %% report that sometask took 1534ms
-
-Or for your convenience: 
-
-    Start = erlang:now(),
-    do_sometask(), 
-    estatsd:timing(sometast, Start).        %% uses now() and now_diff for you
-
-Sampling
---------
-
-Only report 10% of some_frequent_task measurements:
-
-    estatsd:timing(some_frequent_task, 12, 0.1) 
+Should you find a better way, let me know :)
 
 
+Installation & Usage
+--------------------
+I recommend you run **estatsd** as a standalone node to which you talk from your various clients.
+Otherwise, include **estatsd** into your project, then make sure you start the application, e.g.:
 
-NOTES
-=====
+```erlang
+application:start(estatsd).
+```
 
-This could be extended to take a callback for reporting mechanisms.
-Right now it's hardcoded to stick data into graphite.
+See `rel/files/app.config` for a list of configuration options and their descriptions.
 
 
+### Counters
+```erlang
+% Increment `num_foos` by one:
+estatsd:increment(num_foos).
 
-Richard Jones <rj@metabrew.com>
-@metabrew
- -->
+% Decrement `num_bars` by 3:
+estatsd:decrement(<<"num_bars">>, 3).
+
+% Increment `tcp.bytes_in` by 512:
+estatsd:increment("tcp.bytes_in", 512).
+```
+
+
+### Timers
+```erlang
+% Report that `sometask` took 1534ms:
+estatsd:timing(sometask, 1534).
+```
+
+
+### Sampling
+```erlang
+% Let estatsd know that only 10% are being reported.
+% 125 * (1/0.1) = value actually incremented by.
+estatsd:increment(num_foos, 125, 0.1).
+```
+
+
+Remarks concerning Librato
+==========================
+Librato does not (yet) support combining several different metrics into one chart.
+
+To achieve this effect the [Librato Adapter](https://github.com/johannesh/estatsd/blob/master/apps/estatsd/src/adapters/estatsda_librato.erl) introduces the notion of _groups_:
+
+```erlang
+estatsd:increment("myapp.calls-failure").
+estatsd:increment("myapp.calls-success").
+estatsd:increment("myapp.calls-unknown").
+```
+
+Result is one metric named `myapp.calls` including three different graphs, namely `failure`, `success` and `unknown`.
