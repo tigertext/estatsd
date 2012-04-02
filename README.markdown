@@ -5,7 +5,7 @@ Heavily modified fork of the [Opscode estatsd](https://github.com/opscode/estats
 
 Adding estatsd as a dependency
 -----------------------------------------
-Even though **estatsd** come as a node you can add it, at least somehow, as a dependency:
+Even though **estatsd** comes as a node you can add it as a dependency:
 
 1. Clone or submodule **estatsd** into your `priv/` directory or whatever have you
 2. Include it in `sub_dirs` in your `rebar.config`, e.g.:
@@ -29,7 +29,7 @@ Even though **estatsd** come as a node you can add it, at least somehow, as a de
 
 4. Make sure you have a `estatsd` section, like the one in `rel/files/app.config`, in your environment.
 
-Should you find a better way, let me know :)
+Should you know a better way, let me know!
 
 
 Installation & Usage
@@ -72,9 +72,11 @@ estatsd:increment(num_foos, 125, 0.1).
 ```
 
 
-Remarks concerning Librato
-==========================
-Librato does not (yet) support combining several different metrics into one chart.
+Metrics Groups & Librato
+========================
+~~Librato does not (yet) support combining several different metrics into one chart.~~
+
+This has been implemented! :)
 
 To achieve this effect the [Librato Adapter](https://github.com/johannesh/estatsd/blob/master/apps/estatsd/src/adapters/estatsda_librato.erl) introduces the notion of _groups_:
 
@@ -84,4 +86,4 @@ estatsd:increment("myapp.calls-success").
 estatsd:increment("myapp.calls-unknown").
 ```
 
-Result is one metric named `myapp.calls` including three different graphs, namely `failure`, `success` and `unknown`.
+As a result you get one metric named `myapp.calls` including three different graphs, namely `failure`, `success` and `unknown`.
