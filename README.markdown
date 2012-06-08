@@ -1,6 +1,6 @@
 estatsd
 =============
-Heavily modified fork of the [Opscode estatsd](https://github.com/opscode/estatsd), able to publish metrics to [Librato](https://metrics.librato.com).
+Heavily modified fork of the [Opscode estatsd](https://github.com/opscode/estatsd), able to publish metrics to [Librato](https://metrics.librato.com) and [StatHat](https://http://www.stathat.com).
 
 
 Adding estatsd as a dependency
