@@ -45,28 +45,6 @@ sync_handle_metrics(Metrics, State) ->
 
 % ====================== \/ HELPER FUNCTIONS ===================================
 
-%% @doc Renders the counter metrics
-%% -spec render_counters_(prepared_counters()) -> JsonStruct::term().
-%% render_counters_(Counters) ->
-%%   lists:map(
-%%     fun({KeyAsBinary, ValuePerSec, _NoIncrements}) ->
-%%       case binary:split(KeyAsBinary, <<"-">>, [global]) of
-%%         % A counter adhering to the group convention;
-%%         % That is, minus ("-") separates group from actual key.
-%%         [Group, Source] -> {struct, [
-%%           {name, Group},
-%%           {source, Source},
-%%           {value, ValuePerSec}
-%%         ]};
-%%         % This is a common counter.
-%%         _ -> {struct, [
-%%           {name, KeyAsBinary},
-%%           {value, ValuePerSec}
-%%         ]}
-%%       end
-%%     end,
-%%     Counters).
-
 %% @doc Encodes a list of tuples to the form key=value,
 encode_params_(Params) ->
   Keys = lists:map(
@@ -88,20 +66,16 @@ send_({Counters, _Timers}, #state{token = Token}) ->
     fun({KeyAsBinary, ValuePerSec, _NoIncrements}) ->
         Params = [{stat, binary_to_list(KeyAsBinary)},
                   {ezkey, Token},
-                  {value, estatsd:num2str(ValuePerSec)}
+                  {count, estatsd:num2str(ValuePerSec)}
                  ],
         Url = "http://api.stathat.com/ez?" ++ encode_params_(Params),
         spawn(
           fun() ->
               case ibrowse:send_req(Url, Headers, get, "", Options, 5000) of
                 {error, Reason} ->
-                  io:format("Error!~n", []),
-                  io:format(Url, []),
                   error_logger:error_msg("[~s] Delivery failed: '~p'", [?MODULE, Reason]),
                   {error, Reason};
                 _ ->
-                  io:format("Success!~n", []),
-                  io:format(Url ++ "~n", []),
                   {ok, noreply}
               end
           end)
