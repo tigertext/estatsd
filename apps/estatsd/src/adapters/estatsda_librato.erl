@@ -90,14 +90,28 @@ render_timers_(Timers) ->
       end, {0, 0}, Durations),
 
       % Build Mochijson2 JSON fragment
-      {struct, [
-        {name, KeyAsBinary},
-        {count, Count},
-        {sum, Sum},
-        {max, Max},
-        {min, Min},
-        {sum_squares, SumSquares}
-      ]}
+      case binary:split(KeyAsBinary, <<"-">>, [global]) of
+        [Group, Source] ->
+          {struct, [
+            {name, Group},
+            {source, Source},
+            {count, Count},
+            {sum, Sum},
+            {max, Max},
+            {min, Min},
+            {sum_squares, SumSquares}
+          ]};
+
+        _ ->
+          {struct, [
+            {name, KeyAsBinary},
+            {count, Count},
+            {sum, Sum},
+            {max, Max},
+            {min, Min},
+            {sum_squares, SumSquares}
+          ]}
+      end
     end,
     Timers).
 
