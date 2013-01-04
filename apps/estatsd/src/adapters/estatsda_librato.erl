@@ -89,15 +89,20 @@ render_timers_(Timers) ->
         {SumAcc + Duration, SumSquaresAcc + (Duration * Duration)}
       end, {0, 0}, Durations),
 
+      Source_List = case binary:split(KeyAsBinary, <<"-">>, [global]) of
+        % A counter adhering to the group convention; minus ("-") separates group from actual key.
+        [Group, Source] -> [{name, Group}, {source, Source}];
+        _               -> [{name, KeyAsBinary}]
+      end,
+
       % Build Mochijson2 JSON fragment
       {struct, [
-        {name, KeyAsBinary},
         {count, Count},
         {sum, Sum},
         {max, Max},
         {min, Min},
         {sum_squares, SumSquares}
-      ]}
+      ] ++ Source_List}
     end,
     Timers).
 
