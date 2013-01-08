@@ -61,7 +61,7 @@ render_({Counters, Timers}) ->
 render_counters_(Counters) ->
   lists:map(
     fun({KeyAsBinary, ValuePerSec, _NoIncrements}) ->
-      case binary:split(KeyAsBinary, <<"-">>, [global]) of
+      case binary:split(KeyAsBinary, <<"-">>, []) of
         % A counter adhering to the group convention;
         % That is, minus ("-") separates group from actual key.
         [Group, Source] -> {struct, [
@@ -89,7 +89,7 @@ render_timers_(Timers) ->
         {SumAcc + Duration, SumSquaresAcc + (Duration * Duration)}
       end, {0, 0}, Durations),
 
-      Source_List = case binary:split(KeyAsBinary, <<"-">>, [global]) of
+      Source_List = case binary:split(KeyAsBinary, <<"-">>, []) of
         % A counter adhering to the group convention; minus ("-") separates group from actual key.
         [Group, Source] -> [{name, Group}, {source, Source}];
         _               -> [{name, KeyAsBinary}]
