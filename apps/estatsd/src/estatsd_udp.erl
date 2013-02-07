@@ -154,6 +154,8 @@ handle_line_(Line) ->
 
 
 %% @doc Sends the timing information to the server.
+send_estatsd_metric_(<<"g">>, Key, Value, _SampleRate) ->
+  estatsd:timing(Key, convert_value_(Value));
 send_estatsd_metric_(<<"ms">>, Key, Value, _SampleRate) ->
   estatsd:timing(Key, convert_value_(Value));
 
