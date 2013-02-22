@@ -155,25 +155,29 @@ handle_line_(Line) ->
 
 %% @doc Sends the timing information to the server.
 send_estatsd_metric_(<<"g">>, Key, Value, _SampleRate) ->
-  estatsd:timing(Key, convert_value_(Value));
+    estatsd:timing(Key, convert_value_(Value, is_float_(Value)));
 send_estatsd_metric_(<<"ms">>, Key, Value, _SampleRate) ->
-  estatsd:timing(Key, convert_value_(Value));
+    estatsd:timing(Key, convert_value_(Value, is_float_(Value)));
 
 %% @doc Sends the counter information to the server.
 send_estatsd_metric_(<<"c">>, Key, Value, SampleRate) ->
-  estatsd:increment(Key, convert_value_(Value),
+    estatsd:increment(Key, convert_value_(Value, is_float_(Value)),
     list_to_float(binary_to_list(SampleRate)));
 
 %% @doc Ignores any non-matching metrics.
 send_estatsd_metric_(_, _, _, _) -> ignored.
 
+is_float_(Value) when is_binary(Value) ->
+    length(binary:split(Value, <<".">>)) == 2.
 
 %% @doc Formats the given binary into an integer.
 -define (to_int(Value), list_to_integer(binary_to_list(Value))).
+-define (to_float(Value), list_to_float(binary_to_list(Value))). 
 
 %% @doc Converts the given value to its integer representation.
--spec convert_value_(Value :: binary() | integer()) -> integer().
-convert_value_(Value) when is_binary(Value) -> ?to_int(Value);
-convert_value_(Value) when is_integer(Value) -> Value.
+-spec convert_value_(Value :: binary() | integer(), boolean()) -> integer().
+convert_value_(Value, Is_Decimal) when is_binary(Value), not Is_Decimal -> ?to_int(Value);
+convert_value_(Value, Is_Decimal) when is_binary(Value), Is_Decimal -> ?to_float(Value);
+convert_value_(Value, _) when is_integer(Value) -> Value.
 
 % ====================== /\ HELPER FUNCTIONS ===================================

@@ -101,7 +101,7 @@ timing(Key, Duration) when is_integer(Duration) ->
 
 %% @doc Measure timing information.
 timing(Key, Duration) ->
-  gen_server:cast(?SERVER, {timing, Key, erlang:round(Duration)}).
+  gen_server:cast(?SERVER, {timing, Key, Duration}).
 
 
 %% @doc Alias for increment(Key, 1, 1).
