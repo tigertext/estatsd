@@ -90,7 +90,7 @@ render_timers_(Timers) ->
       end, {0, 0}, Durations),
 
       % Build Mochijson2 JSON fragment
-      case binary:split(KeyAsBinary, <<"-">>, [global]) of
+      case binary:split(KeyAsBinary, <<"-">>, []) of
         [Group, Source] ->
           {struct, [
             {name, Group},
