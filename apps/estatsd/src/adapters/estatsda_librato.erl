@@ -135,7 +135,8 @@ send_(Message, #state{user = User, token = Token}) ->
     {error, Reason} ->
       error_logger:error_msg("[~s] Delivery failed: '~p'", [?MODULE, Reason]),
       {error, Reason};
-
+    {ok, "400", _ResponseHeaders, ResponseBody} ->
+        error_logger:error_msg("Bad request: ~s", [ResponseBody]);
     _ -> {ok, noreply}
   end.
 
