@@ -185,13 +185,10 @@ precompile_metrics_({Counters, Timers}) ->
 %% @doc Prepares the given counters to be handled by the adapters.
 -spec precompile_counters_(counters()) -> prepared_counters().
 precompile_counters_(Counters) ->
-  FlushInterval = estatsd:env_or_default(flush_interval, 10000),
-
   lists:map(
     fun({Key, {Value, NoIncrements}}) ->
       KeyAsBinary = erlang:list_to_binary(estatsd:key2str(Key)),
-      ValuePerSec = Value / (FlushInterval / 1000),
-      {KeyAsBinary, ValuePerSec, NoIncrements}
+      {KeyAsBinary, Value, NoIncrements}
     end,
     Counters).
 
