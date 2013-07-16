@@ -51,28 +51,29 @@ render_({Counters, Timers}) ->
   CountersMessage = render_counters_(Counters),
   TimersMessage = render_timers_(Timers),
   % Mochijson2 JSON struct
-  Term = {struct, [{gauges, CountersMessage ++ TimersMessage}]},
+  Term = {struct, [{counters, CountersMessage}, {gauges, TimersMessage}]},
   % Encode the final message
-  erlang:iolist_to_binary(mochijson2:encode(Term)).
+  Json = mochijson2:encode(Term),
+  erlang:iolist_to_binary(Json).
 
 
 %% @doc Renders the counter metrics
 -spec render_counters_(prepared_counters()) -> JsonStruct::term().
 render_counters_(Counters) ->
   lists:map(
-    fun({KeyAsBinary, ValuePerSec, _NoIncrements}) ->
+    fun({KeyAsBinary, Value, _NoIncrements}) ->
       case binary:split(KeyAsBinary, <<"-">>, []) of
         % A counter adhering to the group convention;
         % That is, minus ("-") separates group from actual key.
         [Group, Source] -> {struct, [
           {name, Group},
           {source, Source},
-          {value, ValuePerSec}
+          {value, Value}
         ]};
         % This is a common counter.
         _ -> {struct, [
           {name, KeyAsBinary},
-          {value, ValuePerSec}
+          {value, Value}
         ]}
       end
     end,
@@ -130,7 +131,6 @@ send_(Message, #state{user = User, token = Token}) ->
     {basic_auth, {User, Token}},
     {connect_timeout, 2000}
   ],
-
   case ibrowse:send_req(Url, Headers, post, Message, Options, 5000) of
     {error, Reason} ->
       error_logger:error_msg("[~s] Delivery failed: '~p'", [?MODULE, Reason]),
