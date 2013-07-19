@@ -1,4 +1,5 @@
 %% @author Johannes Huning <hi@johanneshuning.com>
+%% @author Martin Hald <mhald@mac.com>
 %% @copyright 2012 Johannes Huning
 %% @doc Librato Metrics adapter, sends metrics to librato.
 -module (estatsda_librato).
@@ -19,7 +20,9 @@
 %% @doc Process state: Librato Metrics API username and auth-token.
 -record (state, {
   user :: string(),
-  token :: string()
+  token :: string(),
+  counters = [] :: list(),
+  data_folder :: string()
 }).
 
 
@@ -27,19 +30,22 @@
 
 %% @doc gen_event callback, builds estatsd_librato's initial state.
 init({User, Token}) ->
-  State = #state{user = User, token = Token},
+  init({User, Token, undefined});
+init({User, Token, DataFolder}) ->
+  PreviousCounters = load_counters(DataFolder),
+  State = #state{user = User, token = Token, counters = PreviousCounters, data_folder=DataFolder},
   {ok, State}.
-
 
 %% @doc estatsd_adapter callback, asynchronously calls sync_handle_metrics.
-handle_metrics(Metrics, State) ->
-  spawn(fun() -> sync_handle_metrics(Metrics, State) end),
-  {ok, State}.
-
+handle_metrics(Metrics, #state{counters=PreviousCounters, data_folder=DataFolder} = State) ->
+  {NewCounters,Json} = render_(Metrics, PreviousCounters),
+  spawn(fun() -> sync_handle_metrics(Json, State) end),
+  save_counters(DataFolder, NewCounters),
+  {ok, State#state{counters=NewCounters}}.
 
 %% @doc estatsd_adapter callback, sends a report to send to Librato Metrics.
-sync_handle_metrics(Metrics, State) ->
-  {ok, send_(render_(Metrics), State)}.
+sync_handle_metrics(Json, State) ->
+  {ok, send_(Json, State)}.
 
 % ====================== /\ ESTATSD_ADAPTER CALLBACKS ==========================
 
@@ -47,38 +53,38 @@ sync_handle_metrics(Metrics, State) ->
 % ====================== \/ HELPER FUNCTIONS ===================================
 
 %% @doc Renders recorded metrics into a message readable by Librato Metrics.
-render_({Counters, Timers}) ->
-  CountersMessage = render_counters_(Counters),
+render_({Counters, Timers}, PreviousCounters) ->
+  {NewCounters,CountersMessage} = render_counters_(PreviousCounters, Counters),
   TimersMessage = render_timers_(Timers),
   % Mochijson2 JSON struct
   Term = {struct, [{counters, CountersMessage}, {gauges, TimersMessage}]},
   % Encode the final message
   Json = mochijson2:encode(Term),
-  erlang:iolist_to_binary(Json).
-
+  {NewCounters, erlang:iolist_to_binary(Json)}.
 
 %% @doc Renders the counter metrics
--spec render_counters_(prepared_counters()) -> JsonStruct::term().
-render_counters_(Counters) ->
-  lists:map(
-    fun({KeyAsBinary, Value, _NoIncrements}) ->
-      case binary:split(KeyAsBinary, <<"-">>, []) of
-        % A counter adhering to the group convention;
-        % That is, minus ("-") separates group from actual key.
-        [Group, Source] -> {struct, [
-          {name, Group},
-          {source, Source},
-          {value, Value}
-        ]};
-        % This is a common counter.
-        _ -> {struct, [
-          {name, KeyAsBinary},
-          {value, Value}
-        ]}
-      end
-    end,
-    Counters).
-
+-spec render_counters_(list(), prepared_counters()) -> {list(), JsonStruct::term()}.
+render_counters_(PreviousCounters, Counters) -> render_counters_(PreviousCounters, Counters, []).
+render_counters_(PreviousCounters, [], Acc) -> {PreviousCounters, Acc};
+render_counters_(PreviousCounters, [{KeyAsBinary, Value, _NoIncrements}|T], Acc) ->
+  PreviousValue = proplists:get_value(KeyAsBinary, PreviousCounters, 0),
+  NewValue = PreviousValue + Value,
+  Json = case binary:split(KeyAsBinary, <<"-">>, []) of
+    % A counter adhering to the group convention;
+    % That is, minus ("-") separates group from actual key.
+    [Group, Source] -> {struct, [
+      {name, Group},
+      {source, Source},
+      {value, NewValue}
+    ]};
+    % This is a common counter.
+    _ -> {struct, [
+      {name, KeyAsBinary},
+      {value, NewValue}
+    ]}
+  end,
+  PreviousCounters2 = proplists:delete(KeyAsBinary, PreviousCounters),
+  render_counters_(PreviousCounters2++[{KeyAsBinary, NewValue}], T, Acc++[Json]).
 
 %% @doc Renders the timer metrics
 -spec render_timers_(prepared_timers()) -> JsonStruct::term().
@@ -139,5 +145,26 @@ send_(Message, #state{user = User, token = Token}) ->
         error_logger:error_msg("Bad request: ~s", [ResponseBody]);
     _ -> {ok, noreply}
   end.
+
+load_counters(undefined) -> [];
+load_counters(DataFolder) ->
+  case file:read_file([DataFolder, $/, "librato_counters.json"]) of
+      {ok, Binary} ->
+          {struct, Arr} = mochijson2:decode(Binary),
+          Arr;
+      {error, enoent} -> [];
+      {error, Error} ->
+          error_logger:warning_msg("Previous counters failed to load, reason:~p", [Error]),
+          []
+  end.
+
+save_counters(undefined, _Counters) -> ok;
+save_counters(DataFolder, Counters) ->
+  {ok, Io} = file:open([DataFolder, $/, "librato_counters.json"], write),
+  Data = [{Name,Value} || {Name,Value} <- Counters],
+  Json = mochijson2:encode({struct, Data}),
+  file:write(Io, Json),
+  file:close(Io),
+  ok.
 
 % ====================== /\ HELPER FUNCTIONS ===================================
