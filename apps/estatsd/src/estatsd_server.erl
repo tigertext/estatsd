@@ -112,13 +112,13 @@ handle_cast({timing, Key, Duration}, State) ->
 handle_cast(flush, State) ->
   % Retrieve the metrics from the state and the env
   Counters = ets:tab2list(statsd),
-  Timers = gb_trees:to_list(State#state.timers),
+  ets:delete_all_objects(statsd),
 
   % Handle the flush in another process
+  Timers = gb_trees:to_list(State#state.timers),
   spawn(fun() -> flush_metrics_(Counters, Timers) end),
 
   % Continue with a blank slate
-  ets:delete_all_objects(statsd),
   NewState = State#state{timers = gb_trees:empty()},
   {noreply, NewState}.
 
