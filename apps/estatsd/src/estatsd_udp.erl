@@ -146,11 +146,15 @@ end.
 handle_line_(Line) ->
   Tokens = binary:split(Line, [<<":">>, <<"|">>], [global]),
   case length(Tokens) of
-    4 -> [Key, Value, Type, <<"@", SampleRate/binary>>] = Tokens;
+    4 -> [Key, Value, Type, <<"@", SampleRate/binary>>] = Tokens,
+         send_estatsd_metric_(Type, Key, Value, SampleRate);
     % In case no sample rate was set, default to 1.
-    3 -> [Key, Value, Type, SampleRate] = Tokens ++ [<<"1.0">>]
-  end,
-  send_estatsd_metric_(Type, Key, Value, SampleRate).
+    3 -> [Key, Value, Type, SampleRate] = Tokens ++ [<<"1.0">>],
+         send_estatsd_metric_(Type, Key, Value, SampleRate);
+    _ ->
+       bad_value
+  end.
+%  send_estatsd_metric_(Type, Key, Value, SampleRate).
 
 
 %% @doc Sends the timing information to the server.
@@ -161,8 +165,13 @@ send_estatsd_metric_(<<"ms">>, Key, Value, _SampleRate) ->
 
 %% @doc Sends the counter information to the server.
 send_estatsd_metric_(<<"c">>, Key, Value, SampleRate) ->
-    estatsd:increment(Key, convert_value_(Value, is_float_(Value)),
-    list_to_float(binary_to_list(SampleRate)));
+    ConvertedValue = case binary:match(SampleRate, [<<".">>]) of
+        nomatch ->
+            list_to_float(binary_to_list(SampleRate)++".0");
+	_ ->
+            list_to_float(binary_to_list(SampleRate))
+    end,
+    estatsd:increment(Key, convert_value_(Value, is_float_(Value)), ConvertedValue);
 
 %% @doc Ignores any non-matching metrics.
 send_estatsd_metric_(_, _, _, _) -> ignored.
@@ -172,7 +181,7 @@ is_float_(Value) when is_binary(Value) ->
 
 %% @doc Formats the given binary into an integer.
 -define (to_int(Value), list_to_integer(binary_to_list(Value))).
--define (to_float(Value), list_to_float(binary_to_list(Value))). 
+-define (to_float(Value), list_to_float(binary_to_list(Value))).
 
 %% @doc Converts the given value to its integer representation.
 -spec convert_value_(Value :: binary() | integer(), boolean()) -> integer().
